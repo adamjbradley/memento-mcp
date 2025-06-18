@@ -466,9 +466,70 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 > **Note**: For testing environments, the system will mock embedding generation if no API key is provided. However, using real embeddings is recommended for integration testing.
 
+## Transport Methods
+
+Memento MCP supports two transport methods for connecting with MCP clients:
+
+### 1. Standard I/O (stdio) Transport
+
+The default transport method uses standard input/output streams. This is ideal for local integrations and command-line tools.
+
+### 2. HTTP Transport
+
+HTTP transport enables direct connections without proxies, making it perfect for web-based integrations and scenarios requiring multiple concurrent clients. The HTTP transport supports:
+
+- **RESTful Communication**: Uses HTTP POST requests for client-to-server communication
+- **Server-Sent Events (SSE)**: Optional SSE streams for real-time server-to-client communication
+- **Session Management**: Stateful sessions with unique session IDs
+- **Resumable Connections**: Support for connection resumption after network interruptions
+- **Health Monitoring**: Built-in health check endpoint
+
+#### Starting HTTP Server
+
+To run Memento MCP with HTTP transport:
+
+```bash
+# Set transport mode to HTTP
+export MCP_TRANSPORT_MODE=http
+
+# Optional: Configure host and port (defaults: localhost:3000)
+export MCP_HTTP_HOST=0.0.0.0
+export MCP_HTTP_PORT=8080
+
+# Start the server
+npx @gannonh/memento-mcp
+```
+
+#### HTTP Endpoints
+
+When running in HTTP mode, the following endpoints are available:
+
+- `POST /mcp` - MCP communication endpoint
+- `GET /mcp` - Server-Sent Events stream endpoint  
+- `DELETE /mcp` - Session termination endpoint
+- `GET /health` - Health check endpoint
+
+#### HTTP Transport Configuration
+
+Configure HTTP transport with these environment variables:
+
+```bash
+# Transport Configuration
+MCP_TRANSPORT_MODE=http          # Enable HTTP transport
+MCP_HTTP_HOST=localhost          # Server host (default: localhost)
+MCP_HTTP_PORT=3000               # Server port (default: 3000)
+
+# Database Configuration (same as stdio)
+MEMORY_STORAGE_TYPE=neo4j
+NEO4J_URI=bolt://127.0.0.1:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=memento_password
+# ... other Neo4j settings
+```
+
 ## Integration with Claude Desktop
 
-### Configuration
+### Configuration for Standard I/O Transport
 
 Add this to your `claude_desktop_config.json`:
 
@@ -496,7 +557,40 @@ Add this to your `claude_desktop_config.json`:
 }
 ```
 
-Alternatively, for local development, you can use:
+### Configuration for HTTP Transport
+
+For HTTP transport, configure Claude Desktop to connect to the HTTP server:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "type": "streamableHttp",
+      "url": "http://localhost:3000/mcp",
+      "env": {
+        "MEMORY_STORAGE_TYPE": "neo4j",
+        "NEO4J_URI": "bolt://127.0.0.1:7687",
+        "NEO4J_USERNAME": "neo4j",
+        "NEO4J_PASSWORD": "memento_password",
+        "NEO4J_DATABASE": "neo4j",
+        "NEO4J_VECTOR_INDEX": "entity_embeddings",
+        "NEO4J_VECTOR_DIMENSIONS": "1536",
+        "NEO4J_SIMILARITY_FUNCTION": "cosine",
+        "OPENAI_API_KEY": "your-openai-api-key",
+        "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
+        "DEBUG": "true"
+      }
+    }
+  }
+}
+```
+
+> **Note**: Start the HTTP server separately before connecting with Claude Desktop:
+> ```bash
+> MCP_TRANSPORT_MODE=http npx @gannonh/memento-mcp
+> ```
+
+Alternatively, for local development with stdio transport, you can use:
 
 ```json
 {

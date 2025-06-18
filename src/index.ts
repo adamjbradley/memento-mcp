@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express from 'express';
+import { randomUUID } from 'node:crypto';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { KnowledgeGraphManager } from './KnowledgeGraphManager.js';
 import { initializeStorageProvider } from './config/storage.js';
 import { setupServer } from './server/setup.js';
@@ -245,11 +249,179 @@ export async function main(): Promise<void> {
   await server.connect(transport);
 }
 
+// Export HTTP server function for direct connection
+export async function startHttpServer(): Promise<void> {
+  const app = express();
+  app.use(express.json());
+
+  // Map to store transports by session ID
+  const transports: { [key: string]: StreamableHTTPServerTransport } = {};
+
+  // Configure server based on environment variables
+  const port = parseInt(process.env.MCP_HTTP_PORT || '3000', 10);
+  const host = process.env.MCP_HTTP_HOST || 'localhost';
+
+  logger.info(`Starting HTTP server on ${host}:${port}`);
+
+  // Handle POST requests for MCP communication
+  app.post('/mcp', async (req, res) => {
+    logger.debug('Received MCP request:', req.body);
+
+    try {
+      // Check for existing session ID
+      const sessionId = req.headers['mcp-session-id'] as string;
+      let transport: StreamableHTTPServerTransport;
+
+      if (sessionId && transports[sessionId]) {
+        // Reuse existing transport
+        transport = transports[sessionId];
+      } else if (!sessionId && isInitializeRequest(req.body)) {
+        // New initialization request
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId: string) => {
+            logger.info(`Session initialized with ID: ${sessionId}`);
+            transports[sessionId] = transport;
+          },
+        });
+
+        // Set up onclose handler to clean up transport when closed
+        transport.onclose = () => {
+          const sid = transport.sessionId;
+          if (sid && transports[sid]) {
+            logger.info(`Transport closed for session ${sid}, removing from transports map`);
+            delete transports[sid];
+          }
+        };
+
+        // Connect the transport to the MCP server
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        return;
+      } else {
+        // Invalid request - no session ID or not initialization request
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Bad Request: No valid session ID provided',
+          },
+          id: null,
+        });
+        return;
+      }
+
+      // Handle the request with existing transport
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      logger.error('Error handling MCP request:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Internal server error',
+          },
+          id: null,
+        });
+      }
+    }
+  });
+
+  // Handle GET requests for SSE streams
+  app.get('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (!sessionId || !transports[sessionId]) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+
+    const lastEventId = req.headers['last-event-id'] as string;
+    if (lastEventId) {
+      logger.debug(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+    } else {
+      logger.debug(`Establishing new SSE stream for session ${sessionId}`);
+    }
+
+    const transport = transports[sessionId];
+    await transport.handleRequest(req, res);
+  });
+
+  // Handle DELETE requests for session termination
+  app.delete('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (!sessionId || !transports[sessionId]) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+
+    logger.info(`Received session termination request for session ${sessionId}`);
+    try {
+      const transport = transports[sessionId];
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      logger.error('Error handling session termination:', error);
+      if (!res.headersSent) {
+        res.status(500).send('Error processing session termination');
+      }
+    }
+  });
+
+  // Health check endpoint
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Start the server
+  const httpServer = app.listen(port, host, () => {
+    logger.info(`MCP HTTP Server listening on http://${host}:${port}`);
+    logger.info('Available endpoints:');
+    logger.info('  POST /mcp - MCP communication');
+    logger.info('  GET /mcp - SSE streams');
+    logger.info('  DELETE /mcp - Session termination');
+    logger.info('  GET /health - Health check');
+  });
+
+  // Handle server shutdown
+  const shutdown = async (): Promise<void> => {
+    logger.info('Shutting down HTTP server...');
+
+    // Close all active transports
+    for (const sessionId in transports) {
+      try {
+        logger.debug(`Closing transport for session ${sessionId}`);
+        await transports[sessionId].close();
+        delete transports[sessionId];
+      } catch (error) {
+        logger.error(`Error closing transport for session ${sessionId}:`, error);
+      }
+    }
+
+    // Close HTTP server
+    httpServer.close(() => {
+      logger.info('HTTP server shutdown complete');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+// Determine which transport to use based on environment
+const transportMode = process.env.MCP_TRANSPORT_MODE || 'stdio';
+
 // Only run main if not in a test environment
 if (!process.env.VITEST && !process.env.NODE_ENV?.includes('test')) {
-  main().catch((error) => {
-    // Log error but don't use console.error
-    logger.error(`Main process terminated: ${error}`);
-    process.exit(1);
-  });
+  if (transportMode === 'http') {
+    startHttpServer().catch((error) => {
+      logger.error(`HTTP server terminated: ${error}`);
+      process.exit(1);
+    });
+  } else {
+    main().catch((error) => {
+      logger.error(`Main process terminated: ${error}`);
+      process.exit(1);
+    });
+  }
 }

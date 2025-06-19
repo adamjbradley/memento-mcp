@@ -11,6 +11,7 @@ import { setupServer } from './server/setup.js';
 import { EmbeddingJobManager } from './embeddings/EmbeddingJobManager.js';
 import { EmbeddingServiceFactory } from './embeddings/EmbeddingServiceFactory.js';
 import { logger } from './utils/logger.js';
+import { getOAuthConfig, OAuthService, AuthMiddleware } from './auth/index.js';
 
 // Re-export the types and classes for use in other modules
 export * from './KnowledgeGraphManager.js';
@@ -244,6 +245,17 @@ if (knowledgeGraphManager && typeof knowledgeGraphManager.createEntities === 'fu
 // Setup the server with the KnowledgeGraphManager
 const server = setupServer(knowledgeGraphManager);
 
+// Setup OAuth authentication
+const oauthConfig = getOAuthConfig();
+const oauthService = new OAuthService(oauthConfig);
+const authMiddleware = new AuthMiddleware(oauthService, oauthConfig.enabled);
+
+logger.info(`OAuth authentication ${oauthConfig.enabled ? 'enabled' : 'disabled'}`);
+if (oauthConfig.enabled) {
+  logger.info(`OAuth issuer: ${oauthConfig.issuer}`);
+  logger.info(`OAuth scopes: ${oauthConfig.scopes.join(', ')}`);
+}
+
 // Export main function for testing
 export async function main(): Promise<void> {
   const transport = new StdioServerTransport();
@@ -264,8 +276,30 @@ export async function startHttpServer(): Promise<void> {
 
   logger.info(`Starting HTTP server on ${host}:${port}`);
 
-  // Handle POST requests for MCP communication
-  app.post('/mcp', async (req, res) => {
+  // OAuth endpoints (if enabled)
+  if (oauthConfig.enabled) {
+    // OAuth authorization endpoint
+    app.get('/oauth/authorize', (req, res) => oauthService.handleAuthorize(req, res));
+    app.post('/oauth/authorize', (req, res) => oauthService.handleAuthorize(req, res));
+    
+    // OAuth token endpoint
+    app.post('/oauth/token', (req, res) => oauthService.handleToken(req, res));
+    
+    // OAuth token introspection endpoint
+    app.post('/oauth/introspect', (req, res) => oauthService.handleIntrospect(req, res));
+    
+    // OAuth server metadata endpoint
+    app.get('/.well-known/oauth-authorization-server', (req, res) => oauthService.handleServerMetadata(req, res));
+    
+    logger.info('OAuth endpoints configured:');
+    logger.info('  GET/POST /oauth/authorize - Authorization endpoint');
+    logger.info('  POST /oauth/token - Token endpoint');
+    logger.info('  POST /oauth/introspect - Token introspection');
+    logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
+  }
+
+  // Handle POST requests for MCP communication (with authentication middleware)
+  app.post('/mcp', authMiddleware.authenticate(), async (req, res) => {
     logger.debug('Received MCP request:', req.body);
 
     try {
@@ -330,8 +364,8 @@ export async function startHttpServer(): Promise<void> {
     }
   });
 
-  // Handle GET requests for SSE streams
-  app.get('/mcp', async (req, res) => {
+  // Handle GET requests for SSE streams (with authentication middleware)
+  app.get('/mcp', authMiddleware.authenticate(), async (req, res) => {
     const sessionId = req.headers['mcp-session-id'] as string;
     if (!sessionId || !transports[sessionId]) {
       res.status(400).send('Invalid or missing session ID');
@@ -349,8 +383,8 @@ export async function startHttpServer(): Promise<void> {
     await transport.handleRequest(req, res);
   });
 
-  // Handle DELETE requests for session termination
-  app.delete('/mcp', async (req, res) => {
+  // Handle DELETE requests for session termination (with authentication middleware)
+  app.delete('/mcp', authMiddleware.authenticate(), async (req, res) => {
     const sessionId = req.headers['mcp-session-id'] as string;
     if (!sessionId || !transports[sessionId]) {
       res.status(400).send('Invalid or missing session ID');
@@ -378,10 +412,17 @@ export async function startHttpServer(): Promise<void> {
   const httpServer = app.listen(port, host, () => {
     logger.info(`MCP HTTP Server listening on http://${host}:${port}`);
     logger.info('Available endpoints:');
-    logger.info('  POST /mcp - MCP communication');
-    logger.info('  GET /mcp - SSE streams');
-    logger.info('  DELETE /mcp - Session termination');
+    logger.info('  POST /mcp - MCP communication' + (oauthConfig.enabled ? ' (requires authentication)' : ''));
+    logger.info('  GET /mcp - SSE streams' + (oauthConfig.enabled ? ' (requires authentication)' : ''));
+    logger.info('  DELETE /mcp - Session termination' + (oauthConfig.enabled ? ' (requires authentication)' : ''));
     logger.info('  GET /health - Health check');
+    if (oauthConfig.enabled) {
+      logger.info('OAuth endpoints:');
+      logger.info('  GET/POST /oauth/authorize - Authorization');
+      logger.info('  POST /oauth/token - Token exchange');
+      logger.info('  POST /oauth/introspect - Token introspection');
+      logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
+    }
   });
 
   // Handle server shutdown

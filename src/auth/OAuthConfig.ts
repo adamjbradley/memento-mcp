@@ -1,0 +1,88 @@
+export interface OAuthConfig {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+  jwtSecret: string;
+  issuer: string;
+  authorizationCodeTtl: number; // seconds
+  accessTokenTtl: number; // seconds
+  refreshTokenTtl: number; // seconds
+  scopes: string[];
+  redirectUris: string[];
+}
+
+export interface OAuthClient {
+  id: string;
+  secret: string;
+  redirectUris: string[];
+  scopes: string[];
+  name: string;
+}
+
+export interface AuthorizationCode {
+  code: string;
+  clientId: string;
+  userId: string;
+  redirectUri: string;
+  scopes: string[];
+  expiresAt: number;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+}
+
+export interface AccessToken {
+  token: string;
+  clientId: string;
+  userId: string;
+  scopes: string[];
+  expiresAt: number;
+  refreshToken?: string;
+}
+
+export interface TokenIntrospectionResponse {
+  active: boolean;
+  client_id?: string;
+  username?: string;
+  scope?: string;
+  exp?: number;
+  iat?: number;
+  token_type?: string;
+}
+
+export interface OAuthServerMetadata {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  introspection_endpoint: string;
+  scopes_supported: string[];
+  response_types_supported: string[];
+  grant_types_supported: string[];
+  token_endpoint_auth_methods_supported: string[];
+}
+
+export const DEFAULT_OAUTH_CONFIG: Partial<OAuthConfig> = {
+  enabled: false,
+  issuer: 'http://localhost:3000',
+  authorizationCodeTtl: 600, // 10 minutes
+  accessTokenTtl: 3600, // 1 hour
+  refreshTokenTtl: 7 * 24 * 3600, // 7 days
+  scopes: ['mcp:read', 'mcp:write', 'mcp:tools', 'mcp:admin'],
+  redirectUris: ['http://localhost:3000/oauth/callback'],
+};
+
+export function getOAuthConfig(): OAuthConfig {
+  const config: OAuthConfig = {
+    enabled: process.env.OAUTH_ENABLED?.toLowerCase() === 'true',
+    clientId: process.env.OAUTH_CLIENT_ID || 'memento-mcp-client',
+    clientSecret: process.env.OAUTH_CLIENT_SECRET || 'memento-mcp-secret',
+    jwtSecret: process.env.OAUTH_JWT_SECRET || 'default-jwt-secret-change-in-production',
+    issuer: process.env.OAUTH_ISSUER || DEFAULT_OAUTH_CONFIG.issuer!,
+    authorizationCodeTtl: parseInt(process.env.OAUTH_AUTH_CODE_TTL || String(DEFAULT_OAUTH_CONFIG.authorizationCodeTtl), 10),
+    accessTokenTtl: parseInt(process.env.OAUTH_ACCESS_TOKEN_TTL || String(DEFAULT_OAUTH_CONFIG.accessTokenTtl), 10),
+    refreshTokenTtl: parseInt(process.env.OAUTH_REFRESH_TOKEN_TTL || String(DEFAULT_OAUTH_CONFIG.refreshTokenTtl), 10),
+    scopes: process.env.OAUTH_SCOPES?.split(',').map(s => s.trim()) || DEFAULT_OAUTH_CONFIG.scopes!,
+    redirectUris: process.env.OAUTH_REDIRECT_URIS?.split(',').map(s => s.trim()) || DEFAULT_OAUTH_CONFIG.redirectUris!,
+  };
+
+  return config;
+}

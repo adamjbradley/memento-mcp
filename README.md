@@ -527,6 +527,81 @@ NEO4J_PASSWORD=memento_password
 # ... other Neo4j settings
 ```
 
+## OAuth 2.0 Authentication
+
+Memento MCP supports OAuth 2.0 authentication to secure access to HTTP transport endpoints. This is particularly useful in production environments or when multiple clients need controlled access.
+
+### OAuth Configuration
+
+Enable OAuth authentication with these environment variables:
+
+```bash
+# Enable OAuth authentication
+OAUTH_ENABLED=true
+
+# OAuth client credentials (change in production)
+OAUTH_CLIENT_ID=memento-mcp-client
+OAUTH_CLIENT_SECRET=your-secure-client-secret
+
+# JWT signing secret (change in production)
+OAUTH_JWT_SECRET=your-secure-jwt-secret
+
+# OAuth server settings
+OAUTH_ISSUER=http://localhost:3000
+OAUTH_SCOPES=mcp:read,mcp:write,mcp:tools,mcp:admin
+```
+
+### OAuth Endpoints
+
+When OAuth is enabled, these endpoints become available:
+
+- `GET/POST /oauth/authorize` - Authorization endpoint (accepts any username/password for testing)
+- `POST /oauth/token` - Token exchange endpoint
+- `POST /oauth/introspect` - Token validation endpoint
+- `GET /.well-known/oauth-authorization-server` - Server metadata
+
+### Basic Authorization Endpoint
+
+The authorization endpoint accepts any username and password combination, making it perfect for testing and development. In production, you should implement proper user authentication.
+
+### Authentication Flow Example
+
+```bash
+# 1. Get authorization code
+curl -X POST http://localhost:3000/oauth/authorize \
+  -d "client_id=memento-mcp-client" \
+  -d "redirect_uri=http://localhost:3000/oauth/callback" \
+  -d "response_type=code" \
+  -d "scope=mcp:read mcp:write" \
+  -d "username=any-user" \
+  -d "password=any-password"
+
+# 2. Exchange code for token
+curl -X POST http://localhost:3000/oauth/token \
+  -d "grant_type=authorization_code" \
+  -d "code=AUTHORIZATION_CODE" \
+  -d "redirect_uri=http://localhost:3000/oauth/callback" \
+  -d "client_id=memento-mcp-client" \
+  -d "client_secret=your-secure-client-secret"
+
+# 3. Use token for MCP requests
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}'
+```
+
+### Scope-based Permissions
+
+OAuth scopes control access to different MCP operations:
+
+- **mcp:read**: Read access to knowledge graph data
+- **mcp:write**: Write access to create/update entities and relations  
+- **mcp:tools**: Access to use MCP tools and functions
+- **mcp:admin**: Full administrative access
+
+For detailed OAuth documentation, examples, and security considerations, see [OAUTH.md](OAUTH.md).
+
 ## Integration with Claude Desktop
 
 ### Configuration for Standard I/O Transport

@@ -106,3 +106,5 @@ copilot-instructions.md
 .prompts/
 .scripts/
 .cursorignore
+vitest-results.json
+test-output/file-storage/memory.json

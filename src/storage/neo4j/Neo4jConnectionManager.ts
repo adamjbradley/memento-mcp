@@ -10,6 +10,7 @@ export interface Neo4jConnectionOptions {
   username?: string;
   password?: string;
   database?: string;
+  encryption?: string;
 }
 
 /**

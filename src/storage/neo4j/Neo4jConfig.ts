@@ -18,6 +18,11 @@ export interface Neo4jConfig {
   password: string;
 
   /**
+   * Encryption for authentication
+   */
+  encryption: string;
+
+  /**
    * Neo4j database name
    */
   database: string;
@@ -49,4 +54,5 @@ export const DEFAULT_NEO4J_CONFIG: Neo4jConfig = {
   vectorIndexName: 'entity_embeddings',
   vectorDimensions: 1536,
   similarityFunction: 'cosine',
+  encryption: 'ENCRYPTION_OFF', // Default to no encryption
 };

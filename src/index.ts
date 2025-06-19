@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -279,6 +280,7 @@ export async function startHttpServer(): Promise<void> {
         // New initialization request
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
+          eventStore: new InMemoryEventStore(),
           onsessioninitialized: (sessionId: string) => {
             logger.info(`Session initialized with ID: ${sessionId}`);
             transports[sessionId] = transport;

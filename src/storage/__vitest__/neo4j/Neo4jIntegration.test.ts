@@ -5,16 +5,19 @@ import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { Neo4jConnectionManager } from '../../neo4j/Neo4jConnectionManager';
 import { Neo4jSchemaManager } from '../../neo4j/Neo4jSchemaManager';
 
-// Use regular describe - don't skip tests
-// Check if we're running in integration test mode to log information
+// Check if we're running in integration test mode
 const isIntegrationTest = process.env.TEST_INTEGRATION === 'true';
-if (!isIntegrationTest) {
+
+// Skip tests if not in integration mode or if Neo4j is not available
+const shouldSkipTests = !isIntegrationTest;
+
+if (shouldSkipTests) {
   console.warn(
-    'Running Neo4j integration tests outside of integration mode. Make sure Neo4j is available.'
+    'Skipping Neo4j integration tests. Set TEST_INTEGRATION=true and ensure Neo4j is running to enable these tests.'
   );
 }
 
-describe('Neo4j Integration Test', () => {
+describe.skipIf(shouldSkipTests)('Neo4j Integration Test', () => {
   let connectionManager: Neo4jConnectionManager;
   let schemaManager: Neo4jSchemaManager;
 

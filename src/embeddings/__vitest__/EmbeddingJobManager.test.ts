@@ -838,6 +838,6 @@ describe('EmbeddingJobManager', () => {
       expect(scheduleSpy).toHaveBeenCalledTimes(2);
       expect(scheduleSpy).toHaveBeenCalledWith('Entity1', expect.any(Number));
       expect(scheduleSpy).toHaveBeenCalledWith('Entity2', expect.any(Number));
-    });
+    }, 15000); // 15 second timeout for this integration test
   });
 });

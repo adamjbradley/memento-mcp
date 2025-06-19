@@ -40,6 +40,7 @@ describe('Neo4jConnectionManager', () => {
     username: 'neo4j',
     password: 'memento_password',
     database: 'neo4j',
+    encryption: false // Default to no encryption
   };
 
   beforeEach(() => {

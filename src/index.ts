@@ -288,6 +288,12 @@ export async function startHttpServer(): Promise<void> {
     // OAuth token introspection endpoint
     app.post('/oauth/introspect', (req, res) => oauthService.handleIntrospect(req, res));
     
+    // RFC7591 Dynamic Client Registration endpoints
+    app.post('/oauth/register', (req, res) => oauthService.handleClientRegistration(req, res));
+    app.get('/oauth/register/:client_id', (req, res) => oauthService.handleClientRegistration(req, res));
+    app.put('/oauth/register/:client_id', (req, res) => oauthService.handleClientRegistration(req, res));
+    app.delete('/oauth/register/:client_id', (req, res) => oauthService.handleClientRegistration(req, res));
+    
     // OAuth server metadata endpoint
     app.get('/.well-known/oauth-authorization-server', (req, res) => oauthService.handleServerMetadata(req, res));
     
@@ -295,6 +301,8 @@ export async function startHttpServer(): Promise<void> {
     logger.info('  GET/POST /oauth/authorize - Authorization endpoint');
     logger.info('  POST /oauth/token - Token endpoint');
     logger.info('  POST /oauth/introspect - Token introspection');
+    logger.info('  POST /oauth/register - Client registration (RFC7591)');
+    logger.info('  GET/PUT/DELETE /oauth/register/:client_id - Client management (RFC7591)');
     logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
   }
 
@@ -421,6 +429,8 @@ export async function startHttpServer(): Promise<void> {
       logger.info('  GET/POST /oauth/authorize - Authorization');
       logger.info('  POST /oauth/token - Token exchange');
       logger.info('  POST /oauth/introspect - Token introspection');
+      logger.info('  POST /oauth/register - Client registration (RFC7591)');
+      logger.info('  GET/PUT/DELETE /oauth/register/:client_id - Client management (RFC7591)');
       logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
     }
   });

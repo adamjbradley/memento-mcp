@@ -168,6 +168,8 @@ describe('HTTP Transport', () => {
 
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(initRequest)
         .expect(200);
 
@@ -190,6 +192,8 @@ describe('HTTP Transport', () => {
 
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(toolsRequest)
         .expect(400);
 
@@ -222,6 +226,8 @@ describe('HTTP Transport', () => {
 
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(initRequest)
         .expect(200);
 
@@ -240,6 +246,8 @@ describe('HTTP Transport', () => {
       const response = await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(toolsRequest)
         .expect(200);
 
@@ -261,6 +269,8 @@ describe('HTTP Transport', () => {
       const response = await request(app)
         .post('/mcp')
         .set('mcp-session-id', 'invalid-session-id')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(toolsRequest)
         .expect(400);
 
@@ -303,6 +313,8 @@ describe('HTTP Transport', () => {
       await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(toolsRequest)
         .expect(400);
     });
@@ -331,6 +343,8 @@ describe('HTTP Transport', () => {
 
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(initRequest)
         .expect(200);
 
@@ -349,6 +363,8 @@ describe('HTTP Transport', () => {
       const response = await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(toolsRequest)
         .expect(200);
 
@@ -384,6 +400,8 @@ describe('HTTP Transport', () => {
       const response = await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(createEntitiesRequest)
         .expect(200);
 
@@ -416,6 +434,8 @@ describe('HTTP Transport', () => {
       await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(createEntitiesRequest)
         .expect(200);
 
@@ -433,6 +453,8 @@ describe('HTTP Transport', () => {
       const response = await request(app)
         .post('/mcp')
         .set('mcp-session-id', sessionId)
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(readGraphRequest)
         .expect(200);
 
@@ -444,6 +466,8 @@ describe('HTTP Transport', () => {
     it('should handle malformed JSON requests', async () => {
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send('invalid json')
         .expect(400);
 
@@ -461,6 +485,8 @@ describe('HTTP Transport', () => {
 
       const response = await request(app)
         .post('/mcp')
+        .set('Accept', 'application/json')
+        .set('Content-Type', 'application/json')
         .send(invalidRequest)
         .expect(400); // Should be handled as bad request due to no session ID
     });

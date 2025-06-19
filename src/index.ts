@@ -259,7 +259,7 @@ export async function startHttpServer(): Promise<void> {
   const transports: { [key: string]: StreamableHTTPServerTransport } = {};
 
   // Configure server based on environment variables
-  const port = parseInt(process.env.MCP_HTTP_PORT || '3000', 10);
+  const port = parseInt(process.env.MCP_HTTP_PORT || '8080', 10);
   const host = process.env.MCP_HTTP_HOST || 'localhost';
 
   logger.info(`Starting HTTP server on ${host}:${port}`);

@@ -516,8 +516,8 @@ Configure HTTP transport with these environment variables:
 ```bash
 # Transport Configuration
 MCP_TRANSPORT_MODE=http          # Enable HTTP transport
-MCP_HTTP_HOST=localhost          # Server host (default: localhost)
-MCP_HTTP_PORT=3000               # Server port (default: 3000)
+MCP_HTTP_HOST=<MCP Server IP>    # Server host (default: localhost)
+MCP_HTTP_PORT=8080               # Server port (default: 8080)
 
 # Database Configuration (same as stdio)
 MEMORY_STORAGE_TYPE=neo4j
@@ -566,7 +566,7 @@ For HTTP transport, configure Claude Desktop to connect to the HTTP server:
   "mcpServers": {
     "memento": {
       "type": "streamableHttp",
-      "url": "http://localhost:3000/mcp",
+      "url": "http://192.168.1.194:8080/mcp",
       "env": {
         "MEMORY_STORAGE_TYPE": "neo4j",
         "NEO4J_URI": "bolt://127.0.0.1:7687",

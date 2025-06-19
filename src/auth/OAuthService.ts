@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { OAuthConfig, OAuthClient, OAuthServerMetadata } from './OAuthConfig.js';
+import { OAuthConfig, OAuthClient, OAuthServerMetadata, ClientRegistrationRequest, ClientRegistrationResponse, ClientRegistrationError } from './OAuthConfig.js';
 import { TokenService } from './TokenService.js';
 import { logger } from '../utils/logger.js';
+import { randomUUID } from 'node:crypto';
 
 export class OAuthService {
   private tokenService: TokenService;
@@ -290,10 +291,11 @@ export class OAuthService {
         authorization_endpoint: `${this.config.issuer}/oauth/authorize`,
         token_endpoint: `${this.config.issuer}/oauth/token`,
         introspection_endpoint: `${this.config.issuer}/oauth/introspect`,
+        registration_endpoint: `${this.config.issuer}/oauth/register`, // RFC7591
         scopes_supported: this.config.scopes,
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
-        token_endpoint_auth_methods_supported: ['client_secret_post'],
+        token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
       };
 
       res.json(metadata);
@@ -304,6 +306,309 @@ export class OAuthService {
         error_description: 'Internal server error',
       });
     }
+  }
+
+  // RFC7591 Dynamic Client Registration Endpoint
+  async handleClientRegistration(req: Request, res: Response): Promise<void> {
+    try {
+      const method = req.method.toLowerCase();
+      
+      if (method === 'post') {
+        return this.handleClientRegistrationCreate(req, res);
+      } else if (method === 'get') {
+        return this.handleClientRegistrationRead(req, res);
+      } else if (method === 'put') {
+        return this.handleClientRegistrationUpdate(req, res);
+      } else if (method === 'delete') {
+        return this.handleClientRegistrationDelete(req, res);
+      } else {
+        res.status(405).json({
+          error: 'invalid_request',
+          error_description: 'Method not allowed',
+        });
+      }
+    } catch (error) {
+      logger.error('Error in client registration endpoint:', error);
+      res.status(500).json({
+        error: 'server_error',
+        error_description: 'Internal server error',
+      });
+    }
+  }
+
+  // Handle client registration creation (POST /oauth/register)
+  private async handleClientRegistrationCreate(req: Request, res: Response): Promise<void> {
+    const registrationRequest = req.body as ClientRegistrationRequest;
+
+    // Validate required fields
+    if (!registrationRequest.redirect_uris || !Array.isArray(registrationRequest.redirect_uris) || registrationRequest.redirect_uris.length === 0) {
+      res.status(400).json({
+        error: 'invalid_redirect_uri',
+        error_description: 'redirect_uris is required and must be a non-empty array',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Validate redirect URIs
+    for (const uri of registrationRequest.redirect_uris) {
+      if (!this.isValidRedirectUri(uri)) {
+        res.status(400).json({
+          error: 'invalid_redirect_uri',
+          error_description: `Invalid redirect URI: ${uri}`,
+        } as ClientRegistrationError);
+        return;
+      }
+    }
+
+    // Validate and set defaults for optional fields
+    const grantTypes = registrationRequest.grant_types || ['authorization_code'];
+    const responseTypes = registrationRequest.response_types || ['code'];
+    const tokenEndpointAuthMethod = registrationRequest.token_endpoint_auth_method || 'client_secret_basic';
+
+    // Validate grant types
+    const supportedGrantTypes = ['authorization_code', 'refresh_token'];
+    const invalidGrantTypes = grantTypes.filter(gt => !supportedGrantTypes.includes(gt));
+    if (invalidGrantTypes.length > 0) {
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: `Unsupported grant types: ${invalidGrantTypes.join(', ')}`,
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Validate response types
+    const supportedResponseTypes = ['code'];
+    const invalidResponseTypes = responseTypes.filter(rt => !supportedResponseTypes.includes(rt));
+    if (invalidResponseTypes.length > 0) {
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: `Unsupported response types: ${invalidResponseTypes.join(', ')}`,
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Validate token endpoint auth method
+    const supportedAuthMethods = ['client_secret_basic', 'client_secret_post', 'none'];
+    if (!supportedAuthMethods.includes(tokenEndpointAuthMethod)) {
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: `Unsupported token endpoint auth method: ${tokenEndpointAuthMethod}`,
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Generate client credentials
+    const clientId = `client_${randomUUID()}`;
+    const clientSecret = tokenEndpointAuthMethod === 'none' ? undefined : this.generateClientSecret();
+    const registrationAccessToken = this.generateRegistrationAccessToken();
+    const clientIdIssuedAt = Math.floor(Date.now() / 1000);
+
+    // Parse and validate scopes
+    const requestedScopes = registrationRequest.scope ? registrationRequest.scope.split(' ') : ['mcp:read'];
+    const validScopes = requestedScopes.filter(scope => this.config.scopes.includes(scope));
+    
+    if (validScopes.length === 0) {
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: 'No valid scopes requested',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Create the client
+    const client: OAuthClient = {
+      id: clientId,
+      secret: clientSecret || '',
+      redirectUris: registrationRequest.redirect_uris,
+      scopes: validScopes,
+      name: registrationRequest.client_name || `Dynamic Client ${clientId}`,
+      clientName: registrationRequest.client_name,
+      clientUri: registrationRequest.client_uri,
+      logoUri: registrationRequest.logo_uri,
+      contacts: registrationRequest.contacts,
+      tosUri: registrationRequest.tos_uri,
+      policyUri: registrationRequest.policy_uri,
+      jwksUri: registrationRequest.jwks_uri,
+      jwks: registrationRequest.jwks,
+      tokenEndpointAuthMethod: tokenEndpointAuthMethod,
+      grantTypes: grantTypes,
+      responseTypes: responseTypes,
+      softwareId: registrationRequest.software_id,
+      softwareVersion: registrationRequest.software_version,
+      clientIdIssuedAt: clientIdIssuedAt,
+      clientSecretExpiresAt: 0, // 0 means never expires
+      registrationAccessToken: registrationAccessToken,
+      registrationClientUri: `${this.config.issuer}/oauth/register/${clientId}`,
+    };
+
+    // Store the client
+    this.clients.set(clientId, client);
+    logger.info(`Dynamically registered OAuth client: ${clientId}`);
+
+    // Create response
+    const response: ClientRegistrationResponse = {
+      client_id: clientId,
+      client_secret: clientSecret,
+      registration_access_token: registrationAccessToken,
+      registration_client_uri: client.registrationClientUri,
+      client_id_issued_at: clientIdIssuedAt,
+      client_secret_expires_at: 0,
+      redirect_uris: client.redirectUris,
+      token_endpoint_auth_method: tokenEndpointAuthMethod,
+      grant_types: grantTypes,
+      response_types: responseTypes,
+      client_name: client.clientName,
+      client_uri: client.clientUri,
+      logo_uri: client.logoUri,
+      scope: validScopes.join(' '),
+      contacts: client.contacts,
+      tos_uri: client.tosUri,
+      policy_uri: client.policyUri,
+      jwks_uri: client.jwksUri,
+      jwks: client.jwks,
+      software_id: client.softwareId,
+      software_version: client.softwareVersion,
+    };
+
+    res.status(201).json(response);
+  }
+
+  // Handle client registration read (GET /oauth/register/:client_id)
+  private async handleClientRegistrationRead(req: Request, res: Response): Promise<void> {
+    const clientId = req.params.client_id;
+    const authHeader = req.headers.authorization;
+
+    if (!clientId) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Missing client_id parameter',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    const client = this.clients.get(clientId);
+    if (!client) {
+      res.status(404).json({
+        error: 'invalid_client_id',
+        error_description: 'Client not found',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Validate registration access token
+    if (!this.validateRegistrationAccessToken(authHeader, client.registrationAccessToken)) {
+      res.status(401).json({
+        error: 'invalid_token',
+        error_description: 'Invalid or missing registration access token',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Return client information
+    const response: ClientRegistrationResponse = {
+      client_id: client.id,
+      client_secret: client.secret || undefined,
+      registration_access_token: client.registrationAccessToken,
+      registration_client_uri: client.registrationClientUri,
+      client_id_issued_at: client.clientIdIssuedAt,
+      client_secret_expires_at: client.clientSecretExpiresAt,
+      redirect_uris: client.redirectUris,
+      token_endpoint_auth_method: client.tokenEndpointAuthMethod,
+      grant_types: client.grantTypes,
+      response_types: client.responseTypes,
+      client_name: client.clientName,
+      client_uri: client.clientUri,
+      logo_uri: client.logoUri,
+      scope: client.scopes.join(' '),
+      contacts: client.contacts,
+      tos_uri: client.tosUri,
+      policy_uri: client.policyUri,
+      jwks_uri: client.jwksUri,
+      jwks: client.jwks,
+      software_id: client.softwareId,
+      software_version: client.softwareVersion,
+    };
+
+    res.json(response);
+  }
+
+  // Handle client registration update (PUT /oauth/register/:client_id)
+  private async handleClientRegistrationUpdate(req: Request, res: Response): Promise<void> {
+    res.status(501).json({
+      error: 'unsupported_operation',
+      error_description: 'Client update operation not yet implemented',
+    } as ClientRegistrationError);
+  }
+
+  // Handle client registration delete (DELETE /oauth/register/:client_id)
+  private async handleClientRegistrationDelete(req: Request, res: Response): Promise<void> {
+    const clientId = req.params.client_id;
+    const authHeader = req.headers.authorization;
+
+    if (!clientId) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Missing client_id parameter',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    const client = this.clients.get(clientId);
+    if (!client) {
+      res.status(404).json({
+        error: 'invalid_client_id',
+        error_description: 'Client not found',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Validate registration access token
+    if (!this.validateRegistrationAccessToken(authHeader, client.registrationAccessToken)) {
+      res.status(401).json({
+        error: 'invalid_token',
+        error_description: 'Invalid or missing registration access token',
+      } as ClientRegistrationError);
+      return;
+    }
+
+    // Delete the client
+    this.clients.delete(clientId);
+    logger.info(`Deleted dynamically registered OAuth client: ${clientId}`);
+
+    res.status(204).send();
+  }
+
+  // Helper methods for RFC7591
+  private isValidRedirectUri(uri: string): boolean {
+    try {
+      const url = new URL(uri);
+      // Basic validation - must be HTTPS or localhost HTTP
+      return url.protocol === 'https:' || 
+             (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1'));
+    } catch {
+      return false;
+    }
+  }
+
+  private generateClientSecret(): string {
+    return `cs_${randomUUID()}`;
+  }
+
+  private generateRegistrationAccessToken(): string {
+    return `rat_${randomUUID()}`;
+  }
+
+  private validateRegistrationAccessToken(authHeader: string | undefined, expectedToken: string | undefined): boolean {
+    if (!authHeader || !expectedToken) {
+      return false;
+    }
+
+    if (!authHeader.startsWith('Bearer ')) {
+      return false;
+    }
+
+    const token = authHeader.substring(7);
+    return token === expectedToken;
   }
 
   // Utility method to validate Bearer token from Authorization header

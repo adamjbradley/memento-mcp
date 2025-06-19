@@ -17,6 +17,25 @@ export interface OAuthClient {
   redirectUris: string[];
   scopes: string[];
   name: string;
+  // RFC7591 Dynamic Client Registration metadata
+  clientName?: string;
+  clientUri?: string;
+  logoUri?: string;
+  contacts?: string[];
+  tosUri?: string;
+  policyUri?: string;
+  jwksUri?: string;
+  jwks?: object;
+  tokenEndpointAuthMethod?: string;
+  grantTypes?: string[];
+  responseTypes?: string[];
+  softwareId?: string;
+  softwareVersion?: string;
+  // Registration metadata
+  clientIdIssuedAt?: number;
+  clientSecretExpiresAt?: number;
+  registrationAccessToken?: string;
+  registrationClientUri?: string;
 }
 
 export interface AuthorizationCode {
@@ -54,10 +73,59 @@ export interface OAuthServerMetadata {
   authorization_endpoint: string;
   token_endpoint: string;
   introspection_endpoint: string;
+  registration_endpoint?: string; // RFC7591
   scopes_supported: string[];
   response_types_supported: string[];
   grant_types_supported: string[];
   token_endpoint_auth_methods_supported: string[];
+}
+
+// RFC7591 Dynamic Client Registration interfaces
+export interface ClientRegistrationRequest {
+  redirect_uris: string[];
+  token_endpoint_auth_method?: string;
+  grant_types?: string[];
+  response_types?: string[];
+  client_name?: string;
+  client_uri?: string;
+  logo_uri?: string;
+  scope?: string;
+  contacts?: string[];
+  tos_uri?: string;
+  policy_uri?: string;
+  jwks_uri?: string;
+  jwks?: object;
+  software_id?: string;
+  software_version?: string;
+}
+
+export interface ClientRegistrationResponse {
+  client_id: string;
+  client_secret?: string;
+  registration_access_token?: string;
+  registration_client_uri?: string;
+  client_id_issued_at?: number;
+  client_secret_expires_at?: number;
+  redirect_uris: string[];
+  token_endpoint_auth_method?: string;
+  grant_types?: string[];
+  response_types?: string[];
+  client_name?: string;
+  client_uri?: string;
+  logo_uri?: string;
+  scope?: string;
+  contacts?: string[];
+  tos_uri?: string;
+  policy_uri?: string;
+  jwks_uri?: string;
+  jwks?: object;
+  software_id?: string;
+  software_version?: string;
+}
+
+export interface ClientRegistrationError {
+  error: string;
+  error_description?: string;
 }
 
 export const DEFAULT_OAUTH_CONFIG: Partial<OAuthConfig> = {

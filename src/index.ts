@@ -266,6 +266,7 @@ export async function main(): Promise<void> {
 export async function startHttpServer(): Promise<void> {
   const app = express();
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Map to store transports by session ID
   const transports: { [key: string]: StreamableHTTPServerTransport } = {};

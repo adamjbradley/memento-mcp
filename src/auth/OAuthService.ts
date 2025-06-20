@@ -642,12 +642,48 @@ export class OAuthService {
   private isValidRedirectUri(uri: string): boolean {
     try {
       const url = new URL(uri);
-      // Basic validation - must be HTTPS or localhost HTTP
-      return url.protocol === 'https:' || 
-             (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1'));
+      // Basic validation - must be HTTPS or localhost/private network HTTP
+      if (url.protocol === 'https:') {
+        return true;
+      }
+      
+      if (url.protocol === 'http:') {
+        // Allow localhost
+        if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+          return true;
+        }
+        // Allow private network ranges (RFC 1918)
+        const ip = url.hostname;
+        if (this.isPrivateIpAddress(ip)) {
+          return true;
+        }
+      }
+      
+      return false;
     } catch {
       return false;
     }
+  }
+
+  private isPrivateIpAddress(ip: string): boolean {
+    // Check if IP is in private ranges (RFC 1918)
+    const ipRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const match = ip.match(ipRegex);
+    
+    if (!match) return false;
+    
+    const octets = match.slice(1).map(Number);
+    
+    // 10.0.0.0/8
+    if (octets[0] === 10) return true;
+    
+    // 172.16.0.0/12
+    if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+    
+    // 192.168.0.0/16
+    if (octets[0] === 192 && octets[1] === 168) return true;
+    
+    return false;
   }
 
   private generateClientSecret(): string {

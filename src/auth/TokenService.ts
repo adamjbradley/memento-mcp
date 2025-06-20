@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import { OAuthConfig, AuthorizationCode, AccessToken, TokenIntrospectionResponse } from './OAuthConfig.js';
 import { logger } from '../utils/logger.js';
 
@@ -208,8 +208,7 @@ export class TokenService {
   }
 
   private createSignature(data: string): string {
-    const crypto = require('node:crypto');
-    const hmac = crypto.createHmac('sha256', this.config.jwtSecret);
+    const hmac = createHmac('sha256', this.config.jwtSecret);
     hmac.update(data);
     return this.base64UrlEncode(hmac.digest());
   }

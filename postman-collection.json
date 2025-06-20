@@ -1,1007 +1,931 @@
 {
-  "info": {
-    "name": "Memento MCP Server Test Collection",
-    "description": "Comprehensive test suite for the Memento MCP (Model Context Protocol) server, including OAuth 2.0 authentication and all available tools.",
-    "version": "1.0.0",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:8080",
-      "description": "Base URL for the MCP server"
-    },
-    {
-      "key": "client_id",
-      "value": "memento-mcp-client",
-      "description": "OAuth client ID"
-    },
-    {
-      "key": "client_secret",
-      "value": "memento-mcp-secret",
-      "description": "OAuth client secret"
-    },
-    {
-      "key": "redirect_uri",
-      "value": "http://localhost:3000/oauth/callback",
-      "description": "OAuth redirect URI"
-    },
-    {
-      "key": "access_token",
-      "value": "",
-      "description": "OAuth access token (will be set automatically)"
-    },
-    {
-      "key": "session_id",
-      "value": "",
-      "description": "MCP session ID (will be set automatically)"
-    }
-  ],
-  "auth": {
-    "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{access_token}}",
-        "type": "string"
-      }
-    ]
-  },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Auto-generate request ID for MCP requests",
-          "if (pm.request.body && pm.request.body.raw) {",
-          "    try {",
-          "        const body = JSON.parse(pm.request.body.raw);",
-          "        if (body.jsonrpc && !body.id) {",
-          "            body.id = Math.floor(Math.random() * 1000000);",
-          "            pm.request.body.raw = JSON.stringify(body);",
-          "        }",
-          "    } catch (e) {",
-          "        // Ignore JSON parse errors",
-          "    }",
-          "}"
-        ]
-      }
-    }
-  ],
-  "item": [
-    {
-      "name": "Authentication",
-      "description": "OAuth 2.0 authentication flow",
-      "item": [
-        {
-          "name": "Server Metadata",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/.well-known/oauth-authorization-server",
-              "host": ["{{base_url}}"],
-              "path": [".well-known", "oauth-authorization-server"]
-            }
-          },
-          "test": [
-            "pm.test('OAuth server metadata is valid', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('issuer');",
-            "    pm.expect(response).to.have.property('authorization_endpoint');",
-            "    pm.expect(response).to.have.property('token_endpoint');",
-            "    pm.expect(response.scopes_supported).to.include('mcp:read');",
-            "});"
-          ]
-        },
-        {
-          "name": "Authorization Request",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"client_id\": \"{{client_id}}\",\n  \"redirect_uri\": \"{{redirect_uri}}\",\n  \"response_type\": \"code\",\n  \"scope\": \"mcp:read mcp:write mcp:tools\",\n  \"state\": \"test_state_123\",\n  \"username\": \"testuser\",\n  \"password\": \"testpass\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/authorize",
-              "host": ["{{base_url}}"],
-              "path": ["oauth", "authorize"]
-            }
-          },
-          "test": [
-            "pm.test('Authorization redirects with code', function () {",
-            "    pm.expect(pm.response.code).to.be.oneOf([302, 200]);",
-            "    ",
-            "    if (pm.response.code === 302) {",
-            "        const location = pm.response.headers.get('Location');",
-            "        pm.expect(location).to.include('code=');",
-            "        ",
-            "        // Extract authorization code from redirect URL",
-            "        const url = new URL(location);",
-            "        const code = url.searchParams.get('code');",
-            "        pm.collectionVariables.set('auth_code', code);",
-            "    }",
-            "});"
-          ]
-        },
-        {
-          "name": "Token Exchange",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"grant_type\": \"authorization_code\",\n  \"code\": \"{{auth_code}}\",\n  \"redirect_uri\": \"{{redirect_uri}}\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/token",
-              "host": ["{{base_url}}"],
-              "path": ["oauth", "token"]
-            }
-          },
-          "test": [
-            "pm.test('Token exchange successful', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('access_token');",
-            "    pm.expect(response).to.have.property('token_type', 'Bearer');",
-            "    ",
-            "    // Store access token for subsequent requests",
-            "    pm.collectionVariables.set('access_token', response.access_token);",
-            "});"
-          ]
-        },
-        {
-          "name": "Token Introspection",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"{{access_token}}\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/oauth/introspect",
-              "host": ["{{base_url}}"],
-              "path": ["oauth", "introspect"]
-            }
-          },
-          "test": [
-            "pm.test('Token introspection shows active token', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('active', true);",
-            "    pm.expect(response).to.have.property('client_id', pm.collectionVariables.get('client_id'));",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "MCP Protocol",
-      "description": "Model Context Protocol communication",
-      "item": [
-        {
-          "name": "Health Check",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/health",
-              "host": ["{{base_url}}"],
-              "path": ["health"]
-            }
-          },
-          "test": [
-            "pm.test('Health check passes', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('status', 'ok');",
-            "});"
-          ]
-        },
-        {
-          "name": "Initialize MCP Session",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2024-11-05\",\n    \"capabilities\": {\n      \"tools\": {}\n    },\n    \"clientInfo\": {\n      \"name\": \"postman-test-client\",\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"id\": 1\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('MCP session initialized', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result).to.have.property('serverInfo');",
-            "    ",
-            "    // Extract session ID from response headers",
-            "    const sessionId = pm.response.headers.get('mcp-session-id');",
-            "    if (sessionId) {",
-            "        pm.collectionVariables.set('session_id', sessionId);",
-            "    }",
-            "});"
-          ]
-        },
-        {
-          "name": "List Tools",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 2\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Tools list retrieved successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result).to.have.property('tools');",
-            "    pm.expect(response.result.tools).to.be.an('array');",
-            "    pm.expect(response.result.tools.length).to.be.greaterThan(0);",
-            "    ",
-            "    // Verify essential tools are present",
-            "    const toolNames = response.result.tools.map(tool => tool.name);",
-            "    pm.expect(toolNames).to.include('create_entities');",
-            "    pm.expect(toolNames).to.include('search_nodes');",
-            "    pm.expect(toolNames).to.include('read_graph');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Entity Management",
-      "description": "Test entity creation, reading, and management",
-      "item": [
-        {
-          "name": "Create Entities",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_entities\",\n    \"arguments\": {\n      \"entities\": [\n        {\n          \"name\": \"John Doe\",\n          \"entityType\": \"Person\",\n          \"observations\": [\n            \"Software engineer at Tech Corp\",\n            \"Lives in San Francisco\",\n            \"Enjoys hiking and photography\"\n          ]\n        },\n        {\n          \"name\": \"Tech Corp\",\n          \"entityType\": \"Company\",\n          \"observations\": [\n            \"Technology company founded in 2010\",\n            \"Headquarters in Silicon Valley\",\n            \"Specializes in AI and machine learning\"\n          ]\n        }\n      ]\n    }\n  },\n  \"id\": 3\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Entities created successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result).to.have.property('content');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        },
-        {
-          "name": "Create Relations",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_relations\",\n    \"arguments\": {\n      \"relations\": [\n        {\n          \"from\": \"John Doe\",\n          \"to\": \"Tech Corp\",\n          \"relationType\": \"works_at\",\n          \"strength\": 0.9,\n          \"confidence\": 0.95,\n          \"metadata\": {\n            \"startDate\": \"2020-01-15\",\n            \"position\": \"Senior Software Engineer\"\n          }\n        }\n      ]\n    }\n  },\n  \"id\": 4\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Relations created successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        },
-        {
-          "name": "Add Observations",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"add_observations\",\n    \"arguments\": {\n      \"observations\": [\n        {\n          \"entityName\": \"John Doe\",\n          \"contents\": [\n            \"Recently completed a machine learning certification\",\n            \"Mentors junior developers on the team\"\n          ],\n          \"strength\": 0.8,\n          \"confidence\": 0.9\n        }\n      ]\n    }\n  },\n  \"id\": 5\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Observations added successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        },
-        {
-          "name": "Open Specific Nodes",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"open_nodes\",\n    \"arguments\": {\n      \"names\": [\"John Doe\", \"Tech Corp\"]\n    }\n  },\n  \"id\": 6\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Nodes opened successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    const content = response.result.content[0].text;",
-            "    pm.expect(content).to.include('John Doe');",
-            "    pm.expect(content).to.include('Tech Corp');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Search Operations",
-      "description": "Test various search capabilities",
-      "item": [
-        {
-          "name": "Search Nodes by Query",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_nodes\",\n    \"arguments\": {\n      \"query\": \"software engineer\"\n    }\n  },\n  \"id\": 7\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Search returns relevant results', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    const content = response.result.content[0].text;",
-            "    pm.expect(content).to.include('John Doe');",
-            "});"
-          ]
-        },
-        {
-          "name": "Semantic Search",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"semantic_search\",\n    \"arguments\": {\n      \"query\": \"technology company\",\n      \"limit\": 5,\n      \"min_similarity\": 0.5,\n      \"hybrid_search\": true\n    }\n  },\n  \"id\": 8\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Semantic search executes', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    // Semantic search may return no results if embeddings aren't generated yet",
-            "    pm.expect(response.result).to.have.property('content');",
-            "});"
-          ]
-        },
-        {
-          "name": "Read Entire Graph",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"read_graph\",\n    \"arguments\": {}\n  },\n  \"id\": 9\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Graph read successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    const content = response.result.content[0].text;",
-            "    pm.expect(content).to.include('entities');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Relation Management",
-      "description": "Test relation operations",
-      "item": [
-        {
-          "name": "Get Specific Relation",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_relation\",\n    \"arguments\": {\n      \"from\": \"John Doe\",\n      \"to\": \"Tech Corp\",\n      \"relationType\": \"works_at\"\n    }\n  },\n  \"id\": 10\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Relation retrieved successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    const content = response.result.content[0].text;",
-            "    pm.expect(content).to.include('works_at');",
-            "});"
-          ]
-        },
-        {
-          "name": "Update Relation",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"update_relation\",\n    \"arguments\": {\n      \"relation\": {\n        \"from\": \"John Doe\",\n        \"to\": \"Tech Corp\",\n        \"relationType\": \"works_at\",\n        \"strength\": 0.95,\n        \"confidence\": 0.98,\n        \"metadata\": {\n          \"startDate\": \"2020-01-15\",\n          \"position\": \"Senior Software Engineer\",\n          \"department\": \"AI Research\"\n        }\n      }\n    }\n  },\n  \"id\": 11\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Relation updated successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Temporal Operations",
-      "description": "Test temporal/historical features",
-      "item": [
-        {
-          "name": "Get Entity History",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_entity_history\",\n    \"arguments\": {\n      \"entityName\": \"John Doe\"\n    }\n  },\n  \"id\": 12\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Entity history retrieved', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    // History may be empty if temporal features aren't enabled",
-            "    pm.expect(response.result).to.have.property('content');",
-            "});"
-          ]
-        },
-        {
-          "name": "Get Relation History",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_relation_history\",\n    \"arguments\": {\n      \"from\": \"John Doe\",\n      \"to\": \"Tech Corp\",\n      \"relationType\": \"works_at\"\n    }\n  },\n  \"id\": 13\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Relation history retrieved', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result).to.have.property('content');",
-            "});"
-          ]
-        },
-        {
-          "name": "Get Decayed Graph",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_decayed_graph\",\n    \"arguments\": {\n      \"reference_time\": {{$timestamp}},\n      \"decay_factor\": 0.1\n    }\n  },\n  \"id\": 14\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Decayed graph retrieved', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result).to.have.property('content');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Embedding Operations",
-      "description": "Test embedding and vector operations",
-      "item": [
-        {
-          "name": "Get Entity Embedding",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_entity_embedding\",\n    \"arguments\": {\n      \"entity_name\": \"John Doe\"\n    }\n  },\n  \"id\": 15\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Entity embedding retrieved or pending', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    // Embedding may not exist yet or be pending generation",
-            "    pm.expect(response.result).to.have.property('content');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Delete Operations",
-      "description": "Test deletion operations",
-      "item": [
-        {
-          "name": "Delete Observations",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_observations\",\n    \"arguments\": {\n      \"deletions\": [\n        {\n          \"entityName\": \"John Doe\",\n          \"observations\": [\n            \"Recently completed a machine learning certification\"\n          ]\n        }\n      ]\n    }\n  },\n  \"id\": 16\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Observations deleted successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        },
-        {
-          "name": "Delete Relations",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_relations\",\n    \"arguments\": {\n      \"relations\": [\n        {\n          \"from\": \"John Doe\",\n          \"to\": \"Tech Corp\",\n          \"relationType\": \"works_at\"\n        }\n      ]\n    }\n  },\n  \"id\": 17\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Relations deleted successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        },
-        {
-          "name": "Delete Entities",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_entities\",\n    \"arguments\": {\n      \"entityNames\": [\"John Doe\", \"Tech Corp\"]\n    }\n  },\n  \"id\": 18\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Entities deleted successfully', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('result');",
-            "    pm.expect(response.result.content[0].text).to.include('successfully');",
-            "});"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Error Handling",
-      "description": "Test error scenarios and edge cases",
-      "item": [
-        {
-          "name": "Invalid Tool Name",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"non_existent_tool\",\n    \"arguments\": {}\n  },\n  \"id\": 19\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Invalid tool name returns error', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('error');",
-            "    pm.expect(response.error.message).to.include('Unknown tool');",
-            "});"
-          ]
-        },
-        {
-          "name": "Missing Required Parameters",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "{{session_id}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_entities\",\n    \"arguments\": {}\n  },\n  \"id\": 20\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Missing parameters returns error', function () {",
-            "    pm.response.to.have.status(200);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('error');",
-            "});"
-          ]
-        },
-        {
-          "name": "Invalid Session ID",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "mcp-session-id",
-                "value": "invalid-session-id"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 21\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            }
-          },
-          "test": [
-            "pm.test('Invalid session ID returns error', function () {",
-            "    pm.response.to.have.status(400);",
-            "    const response = pm.response.json();",
-            "    pm.expect(response).to.have.property('error');",
-            "});"
-          ]
-        },
-        {
-          "name": "Unauthorized Request (No Token)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2024-11-05\",\n    \"capabilities\": {\n      \"tools\": {}\n    },\n    \"clientInfo\": {\n      \"name\": \"unauthorized-client\",\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"id\": 22\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/mcp",
-              "host": ["{{base_url}}"],
-              "path": ["mcp"]
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "test": [
-            "pm.test('Unauthorized request handled properly', function () {",
-            "    // If OAuth is disabled, this should succeed",
-            "    // If OAuth is enabled, this should fail with 401",
-            "    pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
-            "});"
-          ]
-        }
-      ]
-    }
-  ]
+	"info": {
+		"_postman_id": "ab2f909d-beeb-420e-992c-05aca9194fd6",
+		"name": "Memento MCP Server Test Collection",
+		"description": "Comprehensive test suite for the Memento MCP (Model Context Protocol) server, including OAuth 2.0 authentication and all available tools.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "931431"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Server Metadata",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/.well-known/oauth-authorization-server",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								".well-known",
+								"oauth-authorization-server"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Authorization Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"client_id\": \"{{client_id}}\",\n  \"redirect_uri\": \"{{redirect_uri}}\",\n  \"response_type\": \"code\",\n  \"scope\": \"mcp:read mcp:write mcp:tools\",\n  \"state\": \"test_state_123\",\n  \"username\": \"testuser\",\n  \"password\": \"testpass\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/oauth/authorize",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"oauth",
+								"authorize"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Registration Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"redirect_uris\": [\"http://192.168.1.194:8080/oauth/callback\"],\n    \"client_name\": \"My Custom Client\",\n    \"grant_types\": [\"authorization_code\"],\n    \"response_types\": [\"code\"],\n    \"scope\": \"mcp:read mcp:write\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/oauth/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"oauth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Token Exchange",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"grant_type\": \"code\",\r\n  \"code\": \"{{auth_code}}\",\r\n  \"redirect_uri\": \"{{redirect_uri}}\",\r\n  \"client_id\": \"{{client_id}}\",\r\n  \"client_secret\": \"{{client_secret}}\"\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/oauth/token",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"oauth",
+								"token"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Token Introspection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{access_token}}\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/oauth/introspect",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"oauth",
+								"introspect"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "OAuth 2.0 authentication flow"
+		},
+		{
+			"name": "MCP Protocol",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Initialize MCP Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2024-11-05\",\n    \"capabilities\": {\n      \"tools\": {}\n    },\n    \"clientInfo\": {\n      \"name\": \"postman-test-client\",\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Tools",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Model Context Protocol communication"
+		},
+		{
+			"name": "Entity Management",
+			"item": [
+				{
+					"name": "Create Entities",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_entities\",\n    \"arguments\": {\n      \"entities\": [\n        {\n          \"name\": \"John Doe\",\n          \"entityType\": \"Person\",\n          \"observations\": [\n            \"Software engineer at Tech Corp\",\n            \"Lives in San Francisco\",\n            \"Enjoys hiking and photography\"\n          ]\n        },\n        {\n          \"name\": \"Tech Corp\",\n          \"entityType\": \"Company\",\n          \"observations\": [\n            \"Technology company founded in 2010\",\n            \"Headquarters in Silicon Valley\",\n            \"Specializes in AI and machine learning\"\n          ]\n        }\n      ]\n    }\n  },\n  \"id\": 3\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Relations",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_relations\",\n    \"arguments\": {\n      \"relations\": [\n        {\n          \"from\": \"John Doe\",\n          \"to\": \"Tech Corp\",\n          \"relationType\": \"works_at\",\n          \"strength\": 0.9,\n          \"confidence\": 0.95,\n          \"metadata\": {\n            \"startDate\": \"2020-01-15\",\n            \"position\": \"Senior Software Engineer\"\n          }\n        }\n      ]\n    }\n  },\n  \"id\": 4\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Observations",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"add_observations\",\n    \"arguments\": {\n      \"observations\": [\n        {\n          \"entityName\": \"John Doe\",\n          \"contents\": [\n            \"Recently completed a machine learning certification\",\n            \"Mentors junior developers on the team\"\n          ],\n          \"strength\": 0.8,\n          \"confidence\": 0.9\n        }\n      ]\n    }\n  },\n  \"id\": 5\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Open Specific Nodes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"open_nodes\",\n    \"arguments\": {\n      \"names\": [\"John Doe\", \"Tech Corp\"]\n    }\n  },\n  \"id\": 6\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test entity creation, reading, and management"
+		},
+		{
+			"name": "Search Operations",
+			"item": [
+				{
+					"name": "Search Nodes by Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_nodes\",\n    \"arguments\": {\n      \"query\": \"software engineer\"\n    }\n  },\n  \"id\": 7\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Semantic Search",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"semantic_search\",\n    \"arguments\": {\n      \"query\": \"technology company\",\n      \"limit\": 5,\n      \"min_similarity\": 0.5,\n      \"hybrid_search\": true\n    }\n  },\n  \"id\": 8\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Read Entire Graph",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"read_graph\",\n    \"arguments\": {}\n  },\n  \"id\": 9\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test various search capabilities"
+		},
+		{
+			"name": "Relation Management",
+			"item": [
+				{
+					"name": "Get Specific Relation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_relation\",\n    \"arguments\": {\n      \"from\": \"John Doe\",\n      \"to\": \"Tech Corp\",\n      \"relationType\": \"works_at\"\n    }\n  },\n  \"id\": 10\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Relation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"update_relation\",\n    \"arguments\": {\n      \"relation\": {\n        \"from\": \"John Doe\",\n        \"to\": \"Tech Corp\",\n        \"relationType\": \"works_at\",\n        \"strength\": 0.95,\n        \"confidence\": 0.98,\n        \"metadata\": {\n          \"startDate\": \"2020-01-15\",\n          \"position\": \"Senior Software Engineer\",\n          \"department\": \"AI Research\"\n        }\n      }\n    }\n  },\n  \"id\": 11\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test relation operations"
+		},
+		{
+			"name": "Temporal Operations",
+			"item": [
+				{
+					"name": "Get Entity History",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_entity_history\",\n    \"arguments\": {\n      \"entityName\": \"John Doe\"\n    }\n  },\n  \"id\": 12\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Relation History",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_relation_history\",\n    \"arguments\": {\n      \"from\": \"John Doe\",\n      \"to\": \"Tech Corp\",\n      \"relationType\": \"works_at\"\n    }\n  },\n  \"id\": 13\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Decayed Graph",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_decayed_graph\",\n    \"arguments\": {\n      \"reference_time\": {{$timestamp}},\n      \"decay_factor\": 0.1\n    }\n  },\n  \"id\": 14\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test temporal/historical features"
+		},
+		{
+			"name": "Embedding Operations",
+			"item": [
+				{
+					"name": "Get Entity Embedding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_entity_embedding\",\n    \"arguments\": {\n      \"entity_name\": \"John Doe\"\n    }\n  },\n  \"id\": 15\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test embedding and vector operations"
+		},
+		{
+			"name": "Delete Operations",
+			"item": [
+				{
+					"name": "Delete Observations",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_observations\",\n    \"arguments\": {\n      \"deletions\": [\n        {\n          \"entityName\": \"John Doe\",\n          \"observations\": [\n            \"Recently completed a machine learning certification\"\n          ]\n        }\n      ]\n    }\n  },\n  \"id\": 16\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Relations",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_relations\",\n    \"arguments\": {\n      \"relations\": [\n        {\n          \"from\": \"John Doe\",\n          \"to\": \"Tech Corp\",\n          \"relationType\": \"works_at\"\n        }\n      ]\n    }\n  },\n  \"id\": 17\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Entities",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"delete_entities\",\n    \"arguments\": {\n      \"entityNames\": [\"John Doe\", \"Tech Corp\"]\n    }\n  },\n  \"id\": 18\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test deletion operations"
+		},
+		{
+			"name": "Error Handling",
+			"item": [
+				{
+					"name": "Invalid Tool Name",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"non_existent_tool\",\n    \"arguments\": {}\n  },\n  \"id\": 19\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Missing Required Parameters",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "{{session_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_entities\",\n    \"arguments\": {}\n  },\n  \"id\": 20\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Session ID",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "mcp-session-id",
+								"value": "invalid-session-id"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 21\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Unauthorized Request (No Token)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2024-11-05\",\n    \"capabilities\": {\n      \"tools\": {}\n    },\n    \"clientInfo\": {\n      \"name\": \"unauthorized-client\",\n      \"version\": \"1.0.0\"\n    }\n  },\n  \"id\": 22\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/mcp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"mcp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Test error scenarios and edge cases"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Auto-generate request ID for MCP requests",
+					"if (pm.request.body && pm.request.body.raw) {",
+					"    try {",
+					"        const body = JSON.parse(pm.request.body.raw);",
+					"        if (body.jsonrpc && !body.id) {",
+					"            body.id = Math.floor(Math.random() * 1000000);",
+					"            pm.request.body.raw = JSON.stringify(body);",
+					"        }",
+					"    } catch (e) {",
+					"        // Ignore JSON parse errors",
+					"    }",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://192.168.1.194:8080"
+		},
+		{
+			"key": "client_id",
+			"value": "memento-mcp-client"
+		},
+		{
+			"key": "client_secret",
+			"value": "memento-mcp-secret"
+		},
+		{
+			"key": "redirect_uri",
+			"value": "http://192.168.1.194:8080/oauth/callback"
+		},
+		{
+			"key": "access_token",
+			"value": ""
+		},
+		{
+			"key": "session_id",
+			"value": ""
+		}
+	]
 }

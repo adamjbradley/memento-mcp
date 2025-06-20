@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// Load .env file values as fallbacks (don't override existing env vars)
+import { config } from 'dotenv';
+config();
+
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';

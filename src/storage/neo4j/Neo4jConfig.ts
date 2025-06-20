@@ -117,16 +117,30 @@ export function createAuraConfig(baseConfig: Partial<Neo4jConfig>): Neo4jConfig 
 
   // If this is an Aura connection, apply Aura-specific settings
   if (isAuraConnection(config.uri)) {
-    config.encryption = 'ENCRYPTION_ON';
-    config.driverConfig = {
-      ...config.driverConfig,
-      // Aura-optimized settings for cloud latency
-      maxConnectionPoolSize: 50, // Smaller pool for cloud connections
-      connectionTimeout: 60000, // 60 seconds for cloud latency
-      maxTransactionRetryTime: 60000, // 60 seconds retry time
-      encrypted: true,
-      trust: 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES',
-    };
+    // For neo4j+s:// URLs, encryption is handled by the URL scheme
+    // Don't set encryption/trust in driver config to avoid conflicts
+    if (config.uri.startsWith('neo4j+s://') || config.uri.startsWith('bolt+s://')) {
+      config.encryption = 'ENCRYPTION_ON';
+      config.driverConfig = {
+        ...config.driverConfig,
+        // Aura-optimized settings for cloud latency (no encryption config)
+        maxConnectionPoolSize: 50, // Smaller pool for cloud connections
+        connectionTimeout: 60000, // 60 seconds for cloud latency
+        maxTransactionRetryTime: 60000, // 60 seconds retry time
+        // Don't set encrypted/trust when using +s:// URLs
+      };
+    } else {
+      // For regular neo4j:// URLs, set encryption in driver config
+      config.encryption = 'ENCRYPTION_ON';
+      config.driverConfig = {
+        ...config.driverConfig,
+        maxConnectionPoolSize: 50,
+        connectionTimeout: 60000,
+        maxTransactionRetryTime: 60000,
+        encrypted: true,
+        trust: 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES',
+      };
+    }
   }
 
   return config;

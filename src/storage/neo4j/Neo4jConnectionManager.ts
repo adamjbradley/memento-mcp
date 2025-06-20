@@ -17,7 +17,7 @@ export interface Neo4jConnectionOptions {
   username?: string;
   password?: string;
   database?: string;
-  encryption?: string;
+  encryption?: 'ENCRYPTION_ON' | 'ENCRYPTION_OFF';
 }
 
 /**
@@ -70,8 +70,17 @@ export class Neo4jConnectionManager {
       maxTransactionRetryTime: this.config.driverConfig?.maxTransactionRetryTime || 30000,
     };
 
-    // Configure TLS/encryption settings for Aura connections
-    if (this.config.encryption === 'ENCRYPTION_ON' || isAuraConnection(this.config.uri)) {
+    // Configure TLS/encryption settings
+    // For neo4j+s:// and bolt+s:// URLs, encryption is handled by the URL scheme
+    const isSecureUrl = this.config.uri.startsWith('neo4j+s://') || this.config.uri.startsWith('bolt+s://');
+    
+    if (isSecureUrl) {
+      // Don't set encryption config for secure URLs to avoid conflicts
+      logger.info('Using secure URL scheme for Neo4j connection', {
+        uri: this.config.uri.split('@')[0] + '@***', // Hide credentials in logs
+        message: 'Encryption handled by URL scheme'
+      });
+    } else if (this.config.encryption === 'ENCRYPTION_ON' || isAuraConnection(this.config.uri)) {
       driverConfig.encrypted = true;
       
       // Use system CA certificates for Aura

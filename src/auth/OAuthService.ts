@@ -631,6 +631,173 @@ export class OAuthService {
     };
   }
 
+  // OAuth Callback Endpoint - For testing and development
+  async handleCallback(req: Request, res: Response): Promise<void> {
+    try {
+      const { code, state, error, error_description } = req.query;
+
+      if (error) {
+        res.send(this.generateCallbackErrorPage({
+          error: error as string,
+          error_description: error_description as string,
+          state: state as string,
+        }));
+        return;
+      }
+
+      if (!code) {
+        res.status(400).send(this.generateCallbackErrorPage({
+          error: 'invalid_request',
+          error_description: 'Missing authorization code',
+          state: state as string,
+        }));
+        return;
+      }
+
+      res.send(this.generateCallbackSuccessPage({
+        code: code as string,
+        state: state as string,
+        token_endpoint: `${this.config.issuer}/oauth/token`,
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+      }));
+    } catch (error) {
+      logger.error('Error in callback endpoint:', error);
+      res.status(500).send(this.generateCallbackErrorPage({
+        error: 'server_error',
+        error_description: 'Internal server error',
+        state: req.query.state as string,
+      }));
+    }
+  }
+
+  private generateCallbackSuccessPage(params: {
+    code: string;
+    state: string;
+    token_endpoint: string;
+    client_id: string;
+    client_secret: string;
+  }): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authorization Successful</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
+        .code-section { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px solid #e9ecef; }
+        .code { font-family: monospace; font-size: 14px; word-break: break-all; background: #e9ecef; padding: 8px; border-radius: 3px; margin: 10px 0; }
+        .curl-example { background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 4px; margin: 20px 0; overflow-x: auto; }
+        .curl-example code { color: #68d391; }
+        button { background: #007cba; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a8b; }
+        .copy-btn { background: #28a745; font-size: 12px; }
+        .next-steps { background: #fff3cd; color: #856404; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px solid #ffeaa7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success">
+            <h2>✅ Authorization Successful!</h2>
+            <p>You have successfully authorized the application. Use the authorization code below to obtain an access token.</p>
+        </div>
+        
+        <div class="code-section">
+            <h3>Authorization Code:</h3>
+            <div class="code" id="auth-code">${params.code}</div>
+            <button class="copy-btn" onclick="copyToClipboard('auth-code')">Copy Code</button>
+        </div>
+        
+        ${params.state ? `
+        <div class="code-section">
+            <h3>State Parameter:</h3>
+            <div class="code">${params.state}</div>
+        </div>
+        ` : ''}
+        
+        <div class="next-steps">
+            <h3>📋 Next Steps:</h3>
+            <p>1. Copy the authorization code above</p>
+            <p>2. Exchange it for an access token using the token endpoint</p>
+            <p>3. Use the access token to make authenticated requests</p>
+        </div>
+        
+        <h3>🔄 Token Exchange Example:</h3>
+        <div class="curl-example">
+<code>curl -X POST ${params.token_endpoint} \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -d "grant_type=authorization_code" \\
+  -d "code=${params.code}" \\
+  -d "client_id=${params.client_id}" \\
+  -d "client_secret=${params.client_secret}" \\
+  -d "redirect_uri=http://localhost:3000/oauth/callback"</code>
+        </div>
+        
+        <button onclick="location.href='/oauth/authorize'">Start New Authorization</button>
+        <button onclick="location.href='/.well-known/oauth-authorization-server'">View Server Metadata</button>
+    </div>
+    
+    <script>
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            navigator.clipboard.writeText(element.textContent).then(() => {
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.background = '#20c997';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#28a745';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>`;
+  }
+
+  private generateCallbackErrorPage(params: {
+    error: string;
+    error_description?: string;
+    state?: string;
+  }): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authorization Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
+        .error-details { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px 5px 0 0; }
+        button:hover { background: #005a8b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error">
+            <h2>❌ Authorization Failed</h2>
+            <p>The authorization request failed with the following error:</p>
+        </div>
+        
+        <div class="error-details">
+            <h3>Error Details:</h3>
+            <p><strong>Error:</strong> ${params.error}</p>
+            ${params.error_description ? `<p><strong>Description:</strong> ${params.error_description}</p>` : ''}
+            ${params.state ? `<p><strong>State:</strong> ${params.state}</p>` : ''}
+        </div>
+        
+        <button onclick="location.href='/oauth/authorize'">Try Again</button>
+        <button onclick="location.href='/.well-known/oauth-authorization-server'">View Server Info</button>
+    </div>
+</body>
+</html>`;
+  }
+
   private generateAuthorizationForm(params: {
     client_id: string;
     redirect_uri: string;

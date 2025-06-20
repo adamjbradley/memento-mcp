@@ -282,6 +282,9 @@ export async function startHttpServer(): Promise<void> {
     app.get('/oauth/authorize', (req, res) => oauthService.handleAuthorize(req, res));
     app.post('/oauth/authorize', (req, res) => oauthService.handleAuthorize(req, res));
     
+    // OAuth callback endpoint (for testing and development)
+    app.get('/oauth/callback', (req, res) => oauthService.handleCallback(req, res));
+    
     // OAuth token endpoint
     app.post('/oauth/token', (req, res) => oauthService.handleToken(req, res));
     
@@ -299,6 +302,7 @@ export async function startHttpServer(): Promise<void> {
     
     logger.info('OAuth endpoints configured:');
     logger.info('  GET/POST /oauth/authorize - Authorization endpoint');
+    logger.info('  GET /oauth/callback - Authorization callback (for testing)');
     logger.info('  POST /oauth/token - Token endpoint');
     logger.info('  POST /oauth/introspect - Token introspection');
     logger.info('  POST /oauth/register - Client registration (RFC7591)');

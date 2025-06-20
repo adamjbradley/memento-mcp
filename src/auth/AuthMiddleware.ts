@@ -23,10 +23,24 @@ export class AuthMiddleware {
       }
 
       const authHeader = req.headers.authorization;
+      
+      // Enhanced debug logging
+      logger.debug('Authentication attempt:', {
+        method: req.method,
+        url: req.url,
+        hasAuthHeader: !!authHeader,
+        authHeaderStart: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        userAgent: req.headers['user-agent'],
+        allHeaders: Object.keys(req.headers),
+      });
+      
       const tokenValidation = this.oauthService.validateBearerToken(authHeader);
 
       if (!tokenValidation.valid) {
-        logger.debug('Authentication failed - invalid or missing token');
+        logger.debug('Authentication failed - invalid or missing token', {
+          hasAuthHeader: !!authHeader,
+          tokenValidation: tokenValidation
+        });
         res.status(401).json({
           jsonrpc: '2.0',
           error: {

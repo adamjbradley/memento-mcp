@@ -1,0 +1,2 @@
+set OAUTH_ENABLED=true
+set MCP_TRANSPORT_MODE=http

@@ -251,6 +251,13 @@ const oauthService = new OAuthService(oauthConfig);
 const authMiddleware = new AuthMiddleware(oauthService, oauthConfig.enabled);
 
 logger.info(`OAuth authentication ${oauthConfig.enabled ? 'enabled' : 'disabled'}`);
+logger.debug('OAuth configuration details:', {
+  enabled: oauthConfig.enabled,
+  envOAuthEnabled: process.env.OAUTH_ENABLED,
+  clientId: oauthConfig.clientId,
+  issuer: oauthConfig.issuer
+});
+
 if (oauthConfig.enabled) {
   logger.info(`OAuth issuer: ${oauthConfig.issuer}`);
   logger.info(`OAuth scopes: ${oauthConfig.scopes.join(', ')}`);
@@ -277,7 +284,7 @@ export async function startHttpServer(): Promise<void> {
 
   logger.info(`Starting HTTP server on ${host}:${port}`);
 
-  // OAuth endpoints (if enabled)
+  // OAuth endpoints (only if OAuth is enabled)
   if (oauthConfig.enabled) {
     // OAuth authorization endpoint
     app.get('/oauth/authorize', (req, res) => oauthService.handleAuthorize(req, res));
@@ -309,6 +316,8 @@ export async function startHttpServer(): Promise<void> {
     logger.info('  POST /oauth/register - Client registration (RFC7591)');
     logger.info('  GET/PUT/DELETE /oauth/register/:client_id - Client management (RFC7591)');
     logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
+  } else {
+    logger.info('OAuth is disabled - OAuth endpoints not registered');
   }
 
   // Handle POST requests for MCP communication (with authentication middleware)
@@ -430,13 +439,15 @@ export async function startHttpServer(): Promise<void> {
     logger.info('  DELETE /mcp - Session termination' + (oauthConfig.enabled ? ' (requires authentication)' : ''));
     logger.info('  GET /health - Health check');
     if (oauthConfig.enabled) {
-      logger.info('OAuth endpoints:');
+      logger.info('OAuth endpoints available:');
       logger.info('  GET/POST /oauth/authorize - Authorization');
       logger.info('  POST /oauth/token - Token exchange');
       logger.info('  POST /oauth/introspect - Token introspection');
       logger.info('  POST /oauth/register - Client registration (RFC7591)');
       logger.info('  GET/PUT/DELETE /oauth/register/:client_id - Client management (RFC7591)');
       logger.info('  GET /.well-known/oauth-authorization-server - Server metadata');
+    } else {
+      logger.info('OAuth endpoints: Not available (OAuth disabled)');
     }
   });
 

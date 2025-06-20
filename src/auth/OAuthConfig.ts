@@ -153,7 +153,7 @@ export function getOAuthConfig(): OAuthConfig {
   const config: OAuthConfig = {
     enabled: process.env.OAUTH_ENABLED?.toLowerCase() === 'true',
     clientId: process.env.OAUTH_CLIENT_ID || 'memento-mcp-client',
-    clientSecret: process.env.OAUTH_CLIENT_SECRET || 'memento-mcp-secret',
+    clientSecret: process.env.OAUTH_CLIENT_SECRET || 'change-me-secure-client-secret',
     jwtSecret: process.env.OAUTH_JWT_SECRET || 'default-jwt-secret-change-in-production',
     issuer: process.env.OAUTH_ISSUER || DEFAULT_OAUTH_CONFIG.issuer!,
     authorizationCodeTtl: parseInt(process.env.OAUTH_AUTH_CODE_TTL || String(DEFAULT_OAUTH_CONFIG.authorizationCodeTtl), 10),

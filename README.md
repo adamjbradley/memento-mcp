@@ -442,6 +442,102 @@ The Neo4j CLI tools support the following options:
 --no-debug               Disable detailed output (debug is ON by default)
 ```
 
+### Neo4j Aura Cloud Setup
+
+Memento MCP supports Neo4j Aura, Neo4j's fully managed cloud database service. Aura provides a secure, scalable solution without the need to manage your own Neo4j infrastructure.
+
+#### Setting up Neo4j Aura
+
+1. **Create an Aura Account**
+   - Visit [Neo4j Aura](https://neo4j.com/cloud/aura/) and create a free account
+   - The free tier includes 200,000 nodes and relationships, perfect for getting started
+
+2. **Create a Database Instance**
+   - Click "Create Database" in the Aura Console
+   - Choose a region close to your location for optimal performance
+   - Note the generated credentials (username is typically `neo4j`)
+
+3. **Configure Memento MCP for Aura**
+
+Set these environment variables for Aura:
+
+```bash
+# Neo4j Aura Connection Settings (use neo4j+s:// for secure connection)
+NEO4J_URI=neo4j+s://your-instance-id.databases.neo4j.io
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-aura-password
+
+# Database name (typically 'neo4j' for Aura)
+NEO4J_DATABASE=neo4j
+
+# Vector Search Configuration (same as local)
+NEO4J_VECTOR_INDEX=entity_embeddings
+NEO4J_VECTOR_DIMENSIONS=1536
+NEO4J_SIMILARITY_FUNCTION=cosine
+
+# Embedding Service Configuration
+MEMORY_STORAGE_TYPE=neo4j
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+#### Aura Configuration Example
+
+Example configuration for Claude Desktop with Aura:
+
+```json
+{
+  "mcpServers": {
+    "memento": {
+      "command": "/path/to/node",
+      "args": [
+        "/path/to/memento-mcp/dist/index.js"
+      ],
+      "env": {
+        "MEMORY_STORAGE_TYPE": "neo4j",
+        "NEO4J_URI": "neo4j+s://your-instance-id.databases.neo4j.io",
+        "NEO4J_USERNAME": "neo4j",
+        "NEO4J_PASSWORD": "your-aura-password",
+        "OPENAI_API_KEY": "your-openai-api-key",
+        "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small"
+      }
+    }
+  }
+}
+```
+
+#### Aura-Specific Features
+
+- **Automatic TLS Configuration**: Aura connections automatically use TLS encryption for security
+- **Cloud-Optimized Settings**: Connection pool sizes and timeouts are automatically adjusted for cloud latency
+- **Enhanced Error Handling**: Detailed error messages for common Aura connectivity issues
+- **Protocol Detection**: Automatically detects Aura URIs and applies appropriate security settings
+
+#### Supported URI Formats
+
+Memento MCP automatically detects Aura connections using these URI patterns:
+
+- `neo4j+s://your-instance.databases.neo4j.io` (recommended for Aura)
+- `bolt+s://your-instance.databases.neo4j.io` (also supported)
+- Any URI containing `.databases.neo4j.io` or `neo4j.io`
+
+#### Troubleshooting Aura Connections
+
+**Connection Issues:**
+- Ensure your URI uses the secure protocol (`neo4j+s://`)
+- Verify your credentials are correct (passwords are case-sensitive)
+- Check that your network allows outbound connections on port 7687
+
+**Performance Optimization:**
+- Aura connections have slightly higher latency than local connections
+- Connection timeouts are automatically increased for cloud connectivity
+- Consider using connection pooling for high-throughput applications
+
+**Security Notes:**
+- Aura requires TLS encryption (automatically configured)
+- System CA certificates are used for certificate validation
+- All data transmission is encrypted in transit
+
 ### Embedding Models
 
 Available OpenAI embedding models:

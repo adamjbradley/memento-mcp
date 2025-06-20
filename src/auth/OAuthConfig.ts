@@ -9,6 +9,17 @@ export interface OAuthConfig {
   refreshTokenTtl: number; // seconds
   scopes: string[];
   redirectUris: string[];
+  // Callback page configuration
+  callbackConfig?: OAuthCallbackConfig;
+}
+
+export interface OAuthCallbackConfig {
+  customCssUrl?: string; // URL to custom CSS file for styling callback pages
+  brandingTitle?: string; // Custom title for authorization pages
+  brandingLogo?: string; // URL to custom logo
+  supportEmail?: string; // Support contact email
+  privacyPolicyUrl?: string; // URL to privacy policy
+  termsOfServiceUrl?: string; // URL to terms of service
 }
 
 export interface OAuthClient {
@@ -151,6 +162,44 @@ export function getOAuthConfig(): OAuthConfig {
     scopes: process.env.OAUTH_SCOPES?.split(',').map(s => s.trim()) || DEFAULT_OAUTH_CONFIG.scopes!,
     redirectUris: process.env.OAUTH_REDIRECT_URIS?.split(',').map(s => s.trim()) || DEFAULT_OAUTH_CONFIG.redirectUris!,
   };
+
+  // Add callback configuration if any environment variables are set
+  const callbackConfig: OAuthCallbackConfig = {};
+  let hasCallbackConfig = false;
+
+  if (process.env.OAUTH_CALLBACK_CUSTOM_CSS_URL) {
+    callbackConfig.customCssUrl = process.env.OAUTH_CALLBACK_CUSTOM_CSS_URL;
+    hasCallbackConfig = true;
+  }
+  
+  if (process.env.OAUTH_CALLBACK_BRANDING_TITLE) {
+    callbackConfig.brandingTitle = process.env.OAUTH_CALLBACK_BRANDING_TITLE;
+    hasCallbackConfig = true;
+  }
+  
+  if (process.env.OAUTH_CALLBACK_BRANDING_LOGO) {
+    callbackConfig.brandingLogo = process.env.OAUTH_CALLBACK_BRANDING_LOGO;
+    hasCallbackConfig = true;
+  }
+  
+  if (process.env.OAUTH_CALLBACK_SUPPORT_EMAIL) {
+    callbackConfig.supportEmail = process.env.OAUTH_CALLBACK_SUPPORT_EMAIL;
+    hasCallbackConfig = true;
+  }
+  
+  if (process.env.OAUTH_CALLBACK_PRIVACY_POLICY_URL) {
+    callbackConfig.privacyPolicyUrl = process.env.OAUTH_CALLBACK_PRIVACY_POLICY_URL;
+    hasCallbackConfig = true;
+  }
+  
+  if (process.env.OAUTH_CALLBACK_TERMS_OF_SERVICE_URL) {
+    callbackConfig.termsOfServiceUrl = process.env.OAUTH_CALLBACK_TERMS_OF_SERVICE_URL;
+    hasCallbackConfig = true;
+  }
+
+  if (hasCallbackConfig) {
+    config.callbackConfig = callbackConfig;
+  }
 
   return config;
 }

@@ -3,13 +3,16 @@ import { OAuthConfig, OAuthClient, OAuthServerMetadata, ClientRegistrationReques
 import { TokenService } from './TokenService.js';
 import { logger } from '../utils/logger.js';
 import { randomUUID } from 'node:crypto';
+import { TemplateRenderer } from './TemplateRenderer.js';
 
 export class OAuthService {
   private tokenService: TokenService;
   private clients = new Map<string, OAuthClient>();
+  private templateRenderer: TemplateRenderer;
 
   constructor(private config: OAuthConfig) {
     this.tokenService = new TokenService(config);
+    this.templateRenderer = new TemplateRenderer(config.callbackConfig);
     
     // Register default client
     this.registerDefaultClient();
@@ -28,7 +31,20 @@ export class OAuthService {
     logger.info(`Registered OAuth client: ${defaultClient.id}`);
   }
 
-  // Authorization Endpoint - Basic implementation accepting any username/password
+  /**
+   * Handles OAuth authorization requests (GET/POST /oauth/authorize)
+   * 
+   * This endpoint implements the OAuth 2.0 authorization code flow.
+   * It displays an authorization form for GET requests without credentials,
+   * and processes authorization for POST requests with credentials.
+   * 
+   * @param req - Express request object with query/body parameters
+   * @param res - Express response object
+   * 
+   * @example
+   * GET /oauth/authorize?client_id=test&redirect_uri=http://localhost/callback&response_type=code&scope=read&state=xyz
+   * POST /oauth/authorize with form data including username/password
+   */
   async handleAuthorize(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -150,7 +166,18 @@ export class OAuthService {
     }
   }
 
-  // Token Endpoint
+  /**
+   * Handles OAuth token exchange requests (POST /oauth/token)
+   * 
+   * This endpoint exchanges authorization codes for access tokens
+   * according to the OAuth 2.0 specification.
+   * 
+   * @param req - Express request object with form data
+   * @param res - Express response object
+   * 
+   * @example
+   * POST /oauth/token with grant_type=authorization_code&code=xyz&client_id=test&client_secret=secret
+   */
   async handleToken(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -247,7 +274,18 @@ export class OAuthService {
     }
   }
 
-  // Token Introspection Endpoint
+  /**
+   * Handles OAuth token introspection requests (POST /oauth/introspect)
+   * 
+   * This endpoint validates and returns information about access tokens
+   * according to RFC 7662.
+   * 
+   * @param req - Express request object with form data including token
+   * @param res - Express response object
+   * 
+   * @example
+   * POST /oauth/introspect with token=access_token&client_id=test&client_secret=secret
+   */
   async handleIntrospect(req: Request, res: Response): Promise<void> {
     try {
       const { token, client_id, client_secret } = req.body;
@@ -283,7 +321,17 @@ export class OAuthService {
     }
   }
 
-  // OAuth Server Metadata Endpoint
+  /**
+   * Handles OAuth server metadata requests (GET /.well-known/oauth-authorization-server)
+   * 
+   * This endpoint provides OAuth server configuration according to RFC 8414.
+   * 
+   * @param req - Express request object
+   * @param res - Express response object
+   * 
+   * @example
+   * GET /.well-known/oauth-authorization-server
+   */
   async handleServerMetadata(req: Request, res: Response): Promise<void> {
     try {
       const metadata: OAuthServerMetadata = {
@@ -308,7 +356,19 @@ export class OAuthService {
     }
   }
 
-  // RFC7591 Dynamic Client Registration Endpoint
+  /**
+   * Handles OAuth dynamic client registration requests (RFC 7591)
+   * 
+   * This endpoint supports POST (create), GET (read), PUT (update), and DELETE operations
+   * for dynamic client registration according to RFC 7591.
+   * 
+   * @param req - Express request object
+   * @param res - Express response object
+   * 
+   * @example
+   * POST /oauth/register with client registration metadata
+   * GET /oauth/register/:client_id with Authorization: Bearer registration_access_token
+   */
   async handleClientRegistration(req: Request, res: Response): Promise<void> {
     try {
       const method = req.method.toLowerCase();
@@ -631,7 +691,20 @@ export class OAuthService {
     };
   }
 
-  // OAuth Callback Endpoint - For testing and development
+  /**
+   * Handles OAuth callback requests (GET /oauth/callback)
+   * 
+   * This endpoint processes authorization callbacks with either success codes
+   * or error responses. It displays a user-friendly page with the authorization
+   * code and instructions for token exchange.
+   * 
+   * @param req - Express request object with query parameters (code, state, error, etc.)
+   * @param res - Express response object
+   * 
+   * @example
+   * GET /oauth/callback?code=auth123&state=xyz (success)
+   * GET /oauth/callback?error=access_denied&error_description=User denied (error)
+   */
   async handleCallback(req: Request, res: Response): Promise<void> {
     try {
       const { code, state, error, error_description } = req.query;
@@ -660,6 +733,7 @@ export class OAuthService {
         token_endpoint: `${this.config.issuer}/oauth/token`,
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
+        redirect_uri: req.query.redirect_uri as string || this.config.redirectUris[0],
       }));
     } catch (error) {
       logger.error('Error in callback endpoint:', error);
@@ -677,85 +751,16 @@ export class OAuthService {
     token_endpoint: string;
     client_id: string;
     client_secret: string;
+    redirect_uri: string;
   }): string {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Authorization Successful</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
-        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
-        .code-section { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px solid #e9ecef; }
-        .code { font-family: monospace; font-size: 14px; word-break: break-all; background: #e9ecef; padding: 8px; border-radius: 3px; margin: 10px 0; }
-        .curl-example { background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 4px; margin: 20px 0; overflow-x: auto; }
-        .curl-example code { color: #68d391; }
-        button { background: #007cba; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
-        button:hover { background: #005a8b; }
-        .copy-btn { background: #28a745; font-size: 12px; }
-        .next-steps { background: #fff3cd; color: #856404; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px solid #ffeaa7; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="success">
-            <h2>✅ Authorization Successful!</h2>
-            <p>You have successfully authorized the application. Use the authorization code below to obtain an access token.</p>
-        </div>
-        
-        <div class="code-section">
-            <h3>Authorization Code:</h3>
-            <div class="code" id="auth-code">${params.code}</div>
-            <button class="copy-btn" onclick="copyToClipboard('auth-code')">Copy Code</button>
-        </div>
-        
-        ${params.state ? `
-        <div class="code-section">
-            <h3>State Parameter:</h3>
-            <div class="code">${params.state}</div>
-        </div>
-        ` : ''}
-        
-        <div class="next-steps">
-            <h3>📋 Next Steps:</h3>
-            <p>1. Copy the authorization code above</p>
-            <p>2. Exchange it for an access token using the token endpoint</p>
-            <p>3. Use the access token to make authenticated requests</p>
-        </div>
-        
-        <h3>🔄 Token Exchange Example:</h3>
-        <div class="curl-example">
-<code>curl -X POST ${params.token_endpoint} \\
-  -H "Content-Type: application/x-www-form-urlencoded" \\
-  -d "grant_type=authorization_code" \\
-  -d "code=${params.code}" \\
-  -d "client_id=${params.client_id}" \\
-  -d "client_secret=${params.client_secret}" \\
-  -d "redirect_uri=http://localhost:3000/oauth/callback"</code>
-        </div>
-        
-        <button onclick="location.href='/oauth/authorize'">Start New Authorization</button>
-        <button onclick="location.href='/.well-known/oauth-authorization-server'">View Server Metadata</button>
-    </div>
-    
-    <script>
-        function copyToClipboard(elementId) {
-            const element = document.getElementById(elementId);
-            navigator.clipboard.writeText(element.textContent).then(() => {
-                const button = event.target;
-                const originalText = button.textContent;
-                button.textContent = 'Copied!';
-                button.style.background = '#20c997';
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.background = '#28a745';
-                }, 2000);
-            });
-        }
-    </script>
-</body>
-</html>`;
+    return this.templateRenderer.render('callback-success', {
+      CODE: params.code,
+      STATE: params.state,
+      TOKEN_ENDPOINT: params.token_endpoint,
+      CLIENT_ID: params.client_id,
+      CLIENT_SECRET: params.client_secret,
+      REDIRECT_URI: params.redirect_uri,
+    });
   }
 
   private generateCallbackErrorPage(params: {
@@ -763,39 +768,11 @@ export class OAuthService {
     error_description?: string;
     state?: string;
   }): string {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Authorization Error</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
-        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
-        .error-details { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
-        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px 5px 0 0; }
-        button:hover { background: #005a8b; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error">
-            <h2>❌ Authorization Failed</h2>
-            <p>The authorization request failed with the following error:</p>
-        </div>
-        
-        <div class="error-details">
-            <h3>Error Details:</h3>
-            <p><strong>Error:</strong> ${params.error}</p>
-            ${params.error_description ? `<p><strong>Description:</strong> ${params.error_description}</p>` : ''}
-            ${params.state ? `<p><strong>State:</strong> ${params.state}</p>` : ''}
-        </div>
-        
-        <button onclick="location.href='/oauth/authorize'">Try Again</button>
-        <button onclick="location.href='/.well-known/oauth-authorization-server'">View Server Info</button>
-    </div>
-</body>
-</html>`;
+    return this.templateRenderer.render('callback-error', {
+      ERROR: params.error,
+      ERROR_DESCRIPTION: params.error_description,
+      STATE: params.state,
+    });
   }
 
   private generateAuthorizationForm(params: {
@@ -806,53 +783,13 @@ export class OAuthService {
     state: string;
     client_name: string;
   }): string {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Authorize Application</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
-        button:hover { background: #005a8b; }
-        .app-info { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-        .scopes { font-size: 0.9em; color: #666; }
-    </style>
-</head>
-<body>
-    <div class="app-info">
-        <h2>Authorize ${params.client_name}</h2>
-        <p>This application is requesting access to your account with the following permissions:</p>
-        <div class="scopes"><strong>Scopes:</strong> ${params.scope}</div>
-    </div>
-    
-    <form method="post" action="/oauth/authorize">
-        <input type="hidden" name="client_id" value="${params.client_id}">
-        <input type="hidden" name="redirect_uri" value="${params.redirect_uri}">
-        <input type="hidden" name="response_type" value="${params.response_type}">
-        <input type="hidden" name="scope" value="${params.scope}">
-        <input type="hidden" name="state" value="${params.state}">
-        
-        <div class="form-group">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required placeholder="Enter any username">
-        </div>
-        
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required placeholder="Enter any password">
-        </div>
-        
-        <button type="submit">Authorize</button>
-    </form>
-    
-    <p style="font-size: 0.8em; color: #666; margin-top: 20px;">
-        Note: This is a basic implementation that accepts any username and password combination.
-    </p>
-</body>
-</html>`;
+    return this.templateRenderer.render('authorization-form', {
+      CLIENT_ID: params.client_id,
+      REDIRECT_URI: params.redirect_uri,
+      RESPONSE_TYPE: params.response_type,
+      SCOPE: params.scope,
+      STATE: params.state,
+      CLIENT_NAME: params.client_name,
+    });
   }
 }

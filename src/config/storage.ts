@@ -1,5 +1,6 @@
 import { StorageProviderFactory } from '../storage/StorageProviderFactory.js';
 import type { VectorStoreFactoryOptions } from '../storage/VectorStoreFactory.js';
+import { isAuraConnection } from '../storage/neo4j/Neo4jConfig.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -39,10 +40,15 @@ export function createStorageConfig(storageType: string | undefined): StorageCon
   // Neo4j is always the type
   const type = determineStorageType(storageType);
 
+  const neo4jUri = process.env.NEO4J_URI || 'bolt://localhost:7687';
+  const isAura = isAuraConnection(neo4jUri);
+
   logger.info('Configuring Neo4j storage provider', {
-    uri: process.env.NEO4J_URI || 'bolt://localhost:7687',
+    uri: neo4jUri,
     database: process.env.NEO4J_DATABASE || 'neo4j',
     vectorIndex: process.env.NEO4J_VECTOR_INDEX || 'entity_embeddings',
+    isAura,
+    connectionType: isAura ? 'Aura (Cloud)' : 'Local/Self-hosted',
   });
 
   // Base configuration with Neo4j properties
@@ -50,9 +56,9 @@ export function createStorageConfig(storageType: string | undefined): StorageCon
     type,
     options: {
       // Neo4j connection options from environment variables
-      neo4jUri: process.env.NEO4J_URI || 'bolt://localhost:7687',
+      neo4jUri,
       neo4jUsername: process.env.NEO4J_USERNAME || 'neo4j',
-      neo4jPassword: process.env.NEO4J_PASSWORD || 'memento_password',
+      neo4jPassword: process.env.NEO4J_PASSWORD || (isAura ? '' : 'memento_password'),
       neo4jDatabase: process.env.NEO4J_DATABASE || 'neo4j',
       neo4jVectorIndexName: process.env.NEO4J_VECTOR_INDEX || 'entity_embeddings',
       neo4jVectorDimensions: process.env.NEO4J_VECTOR_DIMENSIONS
@@ -62,6 +68,29 @@ export function createStorageConfig(storageType: string | undefined): StorageCon
         (process.env.NEO4J_SIMILARITY_FUNCTION as 'cosine' | 'euclidean') || 'cosine',
     },
   };
+
+  // Provide helpful warnings for Aura configurations
+  if (isAura) {
+    if (!process.env.NEO4J_PASSWORD || process.env.NEO4J_PASSWORD === 'memento_password') {
+      logger.warn(
+        'Neo4j Aura connection detected but no password provided. ' +
+        'Please set NEO4J_PASSWORD environment variable with your Aura instance password.'
+      );
+    }
+
+    if (neo4jUri.startsWith('bolt://') || neo4jUri.startsWith('neo4j://')) {
+      logger.warn(
+        'Neo4j Aura connection detected but using unencrypted protocol. ' +
+        'Consider using neo4j+s:// for secure connections to Aura.'
+      );
+    }
+
+    logger.info('Neo4j Aura configuration tips:', {
+      message: 'Ensure your URI uses neo4j+s:// protocol for secure connections',
+      example: 'neo4j+s://your-instance.databases.neo4j.io',
+      credentials: 'Username is typically "neo4j", password is from your Aura instance',
+    });
+  }
 
   return config;
 }

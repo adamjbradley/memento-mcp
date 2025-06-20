@@ -20,7 +20,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/*.js",
+    "build": "tsc && shx cp -r src/auth/templates dist/auth/ && shx chmod +x dist/*.js",
     "prepare": "npm run build",
     "dev": "tsc --watch",
     "test": "vitest run",

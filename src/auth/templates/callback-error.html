@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{#if BRANDING_TITLE}}{{BRANDING_TITLE}} - {{/if}}Authorization Error</title>
+    {{#if CUSTOM_CSS_URL}}
+    <link rel="stylesheet" href="{{CUSTOM_CSS_URL}}">
+    {{/if}}
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; background: #f9f9f9; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
+        .error-details { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px 5px 0 0; }
+        button:hover { background: #005a8b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error">
+            <h2>❌ Authorization Failed</h2>
+            <p>The authorization request failed with the following error:</p>
+        </div>
+        
+        <div class="error-details">
+            <h3>Error Details:</h3>
+            <p><strong>Error:</strong> {{ERROR}}</p>
+            {{#if ERROR_DESCRIPTION}}
+            <p><strong>Description:</strong> {{ERROR_DESCRIPTION}}</p>
+            {{/if}}
+            {{#if STATE}}
+            <p><strong>State:</strong> {{STATE}}</p>
+            {{/if}}
+        </div>
+        
+        <button onclick="location.href='/oauth/authorize'">Try Again</button>
+        <button onclick="location.href='/.well-known/oauth-authorization-server'">View Server Info</button>
+        
+        {{#if SUPPORT_EMAIL}}
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 0.9em; color: #666;">
+            Need help? Contact <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>
+        </div>
+        {{/if}}
+        
+        {{#if PRIVACY_POLICY_URL}}
+        <div style="text-align: center; margin-top: 10px;">
+            <a href="{{PRIVACY_POLICY_URL}}" style="font-size: 0.8em; color: #666;">Privacy Policy</a>
+            {{#if TERMS_OF_SERVICE_URL}}
+            | <a href="{{TERMS_OF_SERVICE_URL}}" style="font-size: 0.8em; color: #666;">Terms of Service</a>
+            {{/if}}
+        </div>
+        {{else}}
+        {{#if TERMS_OF_SERVICE_URL}}
+        <div style="text-align: center; margin-top: 10px;">
+            <a href="{{TERMS_OF_SERVICE_URL}}" style="font-size: 0.8em; color: #666;">Terms of Service</a>
+        </div>
+        {{/if}}
+        {{/if}}
+    </div>
+</body>
+</html>

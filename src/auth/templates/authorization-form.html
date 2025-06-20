@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{#if BRANDING_TITLE}}{{BRANDING_TITLE}} - {{/if}}Authorize Application</title>
+    {{#if CUSTOM_CSS_URL}}
+    <link rel="stylesheet" href="{{CUSTOM_CSS_URL}}">
+    {{/if}}
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
+        button:hover { background: #005a8b; }
+        .app-info { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .scopes { font-size: 0.9em; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="app-info">
+        {{#if BRANDING_LOGO}}
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="{{BRANDING_LOGO}}" alt="Logo" style="max-height: 60px; max-width: 200px;">
+        </div>
+        {{/if}}
+        <h2>Authorize {{CLIENT_NAME}}</h2>
+        <p>This application is requesting access to your account with the following permissions:</p>
+        <div class="scopes"><strong>Scopes:</strong> {{SCOPE}}</div>
+    </div>
+    
+    <form method="post" action="/oauth/authorize">
+        <input type="hidden" name="client_id" value="{{CLIENT_ID}}">
+        <input type="hidden" name="redirect_uri" value="{{REDIRECT_URI}}">
+        <input type="hidden" name="response_type" value="{{RESPONSE_TYPE}}">
+        <input type="hidden" name="scope" value="{{SCOPE}}">
+        <input type="hidden" name="state" value="{{STATE}}">
+        
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required placeholder="Enter any username">
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required placeholder="Enter any password">
+        </div>
+        
+        <button type="submit">Authorize</button>
+    </form>
+    
+    <p style="font-size: 0.8em; color: #666; margin-top: 20px;">
+        Note: This is a basic implementation that accepts any username and password combination.
+    </p>
+    
+    {{#if SUPPORT_EMAIL}}
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 0.9em; color: #666;">
+        Need help? Contact <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>
+    </div>
+    {{/if}}
+    
+    {{#if PRIVACY_POLICY_URL}}
+    <div style="text-align: center; margin-top: 10px;">
+        <a href="{{PRIVACY_POLICY_URL}}" style="font-size: 0.8em; color: #666;">Privacy Policy</a>
+        {{#if TERMS_OF_SERVICE_URL}}
+        | <a href="{{TERMS_OF_SERVICE_URL}}" style="font-size: 0.8em; color: #666;">Terms of Service</a>
+        {{/if}}
+    </div>
+    {{else}}
+    {{#if TERMS_OF_SERVICE_URL}}
+    <div style="text-align: center; margin-top: 10px;">
+        <a href="{{TERMS_OF_SERVICE_URL}}" style="font-size: 0.8em; color: #666;">Terms of Service</a>
+    </div>
+    {{/if}}
+    {{/if}}
+</body>
+</html>
